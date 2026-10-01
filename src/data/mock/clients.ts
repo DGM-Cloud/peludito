@@ -1,0 +1,58 @@
+import type { Client } from "@/types/client";
+
+export const clients: Client[] = [
+  {
+    id: "cli-1",
+    name: "María Torres",
+    phone: "987654321",
+    email: "maria.torres@email.com",
+    address: "Av. Larco 450, Miraflores",
+    lastVisit: "2026-09-22",
+    patientIds: ["pat-1", "pat-8"],
+  },
+  {
+    id: "cli-2",
+    name: "Carlos Mendoza",
+    phone: "912345678",
+    email: "carlos.mendoza@email.com",
+    address: "Jr. Cusco 120, San Isidro",
+    lastVisit: "2026-09-20",
+    patientIds: ["pat-2"],
+  },
+  {
+    id: "cli-3",
+    name: "Andrea Vargas",
+    phone: "998877665",
+    email: "andrea.vargas@email.com",
+    address: "Calle Los Olivos 88, Surco",
+    lastVisit: "2026-09-15",
+    patientIds: ["pat-3", "pat-9"],
+  },
+  {
+    id: "cli-4",
+    name: "Diego Ramírez",
+    phone: "976543210",
+    email: "diego.ramirez@email.com",
+    address: "Av. Brasil 2100, Magdalena",
+    lastVisit: "2026-09-21",
+    patientIds: ["pat-4"],
+  },
+  {
+    id: "cli-5",
+    name: "Valeria Castro",
+    phone: "965432109",
+    email: "valeria.castro@email.com",
+    address: "Av. Primavera 560, Surco",
+    lastVisit: "2026-09-12",
+    patientIds: ["pat-5", "pat-10"],
+  },
+  {
+    id: "cli-6",
+    name: "José Flores",
+    phone: "954321098",
+    email: "jose.flores@email.com",
+    address: "Jr. Huancavelica 45, Cercado",
+    lastVisit: "2026-09-19",
+    patientIds: ["pat-6", "pat-7"],
+  },
+];

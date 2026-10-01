@@ -1,36 +1,123 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PELUDITO
 
-## Getting Started
+**Gestión para veterinarias** — by [DGM Cloud](https://dgmcloud.dev)
 
-First, run the development server:
+PELUDITO es una **demo comercial SaaS** para veterinarias. No es el producto final de cada cliente: es la demostración vertical con la que DGM Cloud muestra cómo podría verse un sistema de gestión veterinaria profesional.
+
+```text
+DGM Cloud → Demo PELUDITO → Veterinaria interesada → Discovery → Personalización → Backend real
+```
+
+URL objetivo: [https://peludito.dgmcloud.dev](https://peludito.dgmcloud.dev)
+
+---
+
+## Objetivo
+
+Entregar una demo convincente (frontend + datos mock + interacciones locales) que se sienta como un SaaS real: citas, pacientes, clientes, historias clínicas, inventario y reportes.
+
+---
+
+## Stack
+
+- Next.js 16 (App Router)
+- TypeScript
+- Tailwind CSS v4
+- Lucide React
+- Recharts
+
+---
+
+## Instalación
+
+```bash
+npm install
+```
+
+Copia variables de entorno:
+
+```bash
+cp .env.example .env.local
+```
+
+---
+
+## Desarrollo local
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre [http://localhost:3000](http://localhost:3000) (redirige a `/dashboard`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Build
 
-## Learn More
+```bash
+npm run build
+npm start
+```
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy (Netlify)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+El proyecto incluye `netlify.toml` con `@netlify/plugin-nextjs`.
 
-## Deploy on Vercel
+Variables recomendadas:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Variable | Ejemplo |
+|----------|---------|
+| `NEXT_PUBLIC_SITE_URL` | `https://peludito.dgmcloud.dev` |
+| `NEXT_PUBLIC_DGM_URL` | `https://dgmcloud.dev` |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Estructura de carpetas (Arquitectura DGM)
+
+```text
+src/
+├── app/                 # Rutas, layouts, metadata
+├── components/
+│   ├── ui/              # Componentes reutilizables (sin dominio)
+│   ├── layout/          # Sidebar, Header, shell
+│   └── [feature]/      # Módulos de negocio
+├── data/
+│   ├── mock/            # Datos ficticios
+│   └── constants/
+├── hooks/
+├── lib/                 # Placeholders (Supabase/API futuros)
+├── services/            # Capa de acceso a datos (hoy: mock)
+├── types/
+├── utils/
+├── config/
+└── styles/
+```
+
+Esta misma arquitectura debe reutilizarse en futuros SaaS DGM (FIADITO, CHELERO, VECINO).
+
+---
+
+## Mock data
+
+Toda la información es ficticia y vive en `src/data/mock/`. Los servicios en `src/services/` la consumen; las páginas no deben embeber arrays grandes.
+
+La UI interactúa con estado local (creación de citas, pacientes, productos, etc.) para que la demo se sienta funcional.
+
+---
+
+## Futuro backend
+
+La capa `services/` está preparada para migrar a:
+
+1. **Fase 2:** Supabase / PostgreSQL  
+2. **Fase 3:** Backend API + integraciones (auth, pagos, WhatsApp, Calendar, etc.)
+
+Sin acoplar la UI directamente a una base de datos.
+
+---
+
+## Licencia / uso
+
+Proyecto demostrativo de **DGM Cloud**. Contacto comercial: [https://dgmcloud.dev](https://dgmcloud.dev)
