@@ -16,6 +16,7 @@ import { vaccinationsService } from "@/services/vaccinations.service";
 import { veterinariansService } from "@/services/veterinarians.service";
 import type { Appointment } from "@/types/appointment";
 import { calculateAge } from "@/utils/calculateAge";
+import { assetPath } from "@/utils/assetPath";
 import { formatDate } from "@/utils/formatDate";
 import { formatPhone } from "@/utils/formatPhone";
 import Image from "next/image";
@@ -105,7 +106,7 @@ export function AppointmentBriefing({
           <h3 className="text-sm font-semibold text-muted">Paciente</h3>
           <div className="mt-3">
           <PatientPhoto
-            src={`/patients/${patient.id}.jpg`}
+            src={assetPath(`/patients/${patient.id}.jpg`)}
             name={patient.name}
           />
           </div>

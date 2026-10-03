@@ -13,6 +13,7 @@ import type {
   MedicalRecord,
 } from "@/types/medical-record";
 import { calculateAge } from "@/utils/calculateAge";
+import { assetPath } from "@/utils/assetPath";
 import { cn } from "@/utils/cn";
 import { formatPhone } from "@/utils/formatPhone";
 import Image from "next/image";
@@ -409,7 +410,7 @@ function PatientThumb({ id, name }: { id: string; name: string }) {
   return (
     <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-primary-light">
       <Image
-        src={`/patients/${id}.jpg`}
+        src={assetPath(`/patients/${id}.jpg`)}
         alt={`Foto de ${name}`}
         fill
         sizes="112px"

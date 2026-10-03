@@ -19,6 +19,7 @@ import { patientsService } from "@/services/patients.service";
 import { veterinariansService } from "@/services/veterinarians.service";
 import type { Appointment, AppointmentStatus } from "@/types/appointment";
 import { cn } from "@/utils/cn";
+import { assetPath } from "@/utils/assetPath";
 import { useToast } from "@/components/ui/Toast";
 import {
   Calendar,
@@ -307,7 +308,7 @@ export function AppointmentsView() {
                         {apt.time}
                       </span>
                       <Image
-                        src={`/patients/${apt.patientId}.jpg`}
+                        src={assetPath(`/patients/${apt.patientId}.jpg`)}
                         alt=""
                         width={40}
                         height={40}

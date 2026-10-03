@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { assetPath } from "@/utils/assetPath";
 import { Inter } from "next/font/google";
 import { siteConfig } from "@/config/site";
 import "@/styles/globals.css";
@@ -29,7 +30,7 @@ export const metadata: Metadata = {
     description: siteConfig.description,
   },
   icons: {
-    icon: "/favicon/favicon.ico",
+    icon: assetPath("/favicon/favicon.ico"),
   },
 };
 
