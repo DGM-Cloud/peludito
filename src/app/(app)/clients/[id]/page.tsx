@@ -12,6 +12,10 @@ import { formatPhone } from "@/utils/formatPhone";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+export function generateStaticParams() {
+  return clientsService.getClients().map((client) => ({ id: client.id }));
+}
+
 export async function generateMetadata({
   params,
 }: {

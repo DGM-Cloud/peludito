@@ -3,6 +3,10 @@ import { PatientHub } from "@/components/patients/PatientHub";
 import { patientsService } from "@/services/patients.service";
 import { notFound } from "next/navigation";
 
+export function generateStaticParams() {
+  return patientsService.getPatients().map((patient) => ({ id: patient.id }));
+}
+
 export async function generateMetadata({
   params,
 }: {
