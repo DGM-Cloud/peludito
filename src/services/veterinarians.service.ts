@@ -1,12 +1,12 @@
-import { veterinarians as seedVets } from "@/data/mock/veterinarians";
+import { readSnapshot } from "@/lib/clinic-cache";
 import type { Veterinarian } from "@/types/veterinarian";
 
 export const veterinariansService = {
   getVeterinarians(): Veterinarian[] {
-    return [...seedVets];
+    return readSnapshot().veterinarians;
   },
 
   getVeterinarianById(id: string): Veterinarian | undefined {
-    return seedVets.find((v) => v.id === id);
+    return this.getVeterinarians().find((vet) => vet.id === id);
   },
 };

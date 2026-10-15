@@ -11,8 +11,9 @@ type ModalProps = {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "md" | "lg" | "xl" | "2xl";
+  size?: "md" | "lg" | "form" | "xl" | "2xl" | "wide";
   bodyClassName?: string;
+  dismissOnEscape?: boolean;
 };
 
 export function Modal({
@@ -23,9 +24,10 @@ export function Modal({
   footer,
   size = "md",
   bodyClassName,
+  dismissOnEscape = true,
 }: ModalProps) {
   useEffect(() => {
-    if (!open) return;
+    if (!open || !dismissOnEscape) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -35,13 +37,13 @@ export function Modal({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [open, onClose]);
+  }, [open, onClose, dismissOnEscape]);
 
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-8"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -54,14 +56,21 @@ export function Modal({
       />
       <div
         className={cn(
-          "relative z-10 flex max-h-[90vh] w-full flex-col rounded-t-2xl bg-surface shadow-xl sm:rounded-2xl",
+          "relative z-10 flex w-full min-h-0 flex-col overflow-hidden rounded-t-2xl bg-surface shadow-xl sm:rounded-2xl",
+          size === "wide"
+            ? "max-h-[calc(100dvh-3rem)] shadow-2xl sm:max-w-[1120px]"
+            : "max-h-[90vh]",
           size === "md"
             ? "sm:max-w-lg"
             : size === "lg"
               ? "sm:max-w-2xl"
-              : size === "xl"
-                ? "sm:max-w-5xl"
-                : "sm:max-w-6xl",
+              : size === "form"
+                ? "sm:max-w-3xl"
+                : size === "xl"
+                  ? "sm:max-w-5xl"
+                  : size === "wide"
+                    ? ""
+                    : "sm:max-w-6xl",
         )}
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-5">
@@ -81,11 +90,11 @@ export function Modal({
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className={cn("overflow-y-auto", bodyClassName ?? "px-6 py-5")}>
+        <div className={cn("min-h-0 overflow-y-auto", bodyClassName ?? "px-6 py-5")}>
           {children}
         </div>
         {footer ? (
-          <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-5">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-6 py-5">
             {footer}
           </div>
         ) : null}

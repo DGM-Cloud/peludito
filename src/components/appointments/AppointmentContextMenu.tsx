@@ -1,11 +1,11 @@
 "use client";
 
-import { useToast } from "@/components/ui/Toast";
 import { appointmentStatuses } from "@/data/constants/statuses";
 import { appointmentsService } from "@/services/appointments.service";
 import type { Appointment, AppointmentStatus } from "@/types/appointment";
 import { cn } from "@/utils/cn";
 import {
+  ArrowRightLeft,
   Ban,
   Check,
   LogIn,
@@ -51,6 +51,8 @@ export function AppointmentContextMenu({
   onOpenConsult,
   onCharge,
   onOpenPatient,
+  onNotify,
+  onTransfer,
 }: {
   appointment: Appointment;
   patientName: string;
@@ -62,8 +64,10 @@ export function AppointmentContextMenu({
   onOpenConsult: () => void;
   onCharge: () => void;
   onOpenPatient: () => void;
+  onNotify?: () => void;
+  /** Recepción / admin: reasignar médico tratante. */
+  onTransfer?: () => void;
 }) {
-  const { toast } = useToast();
   const ref = useRef<HTMLDivElement>(null);
   const status = appointmentStatuses.find((s) => s.value === appointment.status);
   const { left, top } = placeMenu(x, y);
@@ -158,14 +162,15 @@ export function AppointmentContextMenu({
       statusItem("cancel", "Cancelar cita", "cancelada", Ban, "danger"),
       statusItem("noshow", "Marcar como no asistió", "no_asistio", UserX, "danger"),
     );
-    extras.push({
-      id: "wa",
-      label: "Avisar por WhatsApp",
-      icon: MessageCircle,
-      tone: "default",
-      run: () =>
-        go(() => toast("Integración WhatsApp — próxima implementación.")),
-    });
+    if (onNotify) {
+      extras.push({
+        id: "wa",
+        label: "Avisar por WhatsApp",
+        icon: MessageCircle,
+        tone: "default",
+        run: () => go(onNotify),
+      });
+    }
   } else if (appointment.status === "llego") {
     danger.push(
       statusItem("cancel", "Cancelar cita", "cancelada", Ban, "danger"),
@@ -184,6 +189,19 @@ export function AppointmentContextMenu({
       icon: Undo2,
       tone: "default",
       run: () => go(onCorrect),
+    });
+  }
+
+  if (
+    onTransfer &&
+    !["pagada", "cancelada", "no_asistio"].includes(appointment.status)
+  ) {
+    extras.push({
+      id: "transfer",
+      label: "Transferir tratante",
+      icon: ArrowRightLeft,
+      tone: "default",
+      run: () => go(onTransfer),
     });
   }
 

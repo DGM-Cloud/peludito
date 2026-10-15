@@ -6,16 +6,18 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/Toast";
-import { catalogServices, DEMO_TODAY } from "@/config/demo";
+import { DEMO_TODAY } from "@/config/demo";
 import { paymentMethods } from "@/data/constants/statuses";
 import { useDemo } from "@/context/DemoProvider";
 import { useModal } from "@/hooks/useModal";
 import { appointmentsService } from "@/services/appointments.service";
+import { catalogService } from "@/services/catalog.service";
 import { clientsService } from "@/services/clients.service";
 import { groomingService } from "@/services/grooming.service";
 import { inventoryService } from "@/services/inventory.service";
 import { patientsService } from "@/services/patients.service";
 import { salesService } from "@/services/sales.service";
+import type { Client } from "@/types/client";
 import type { PaymentMethod, SaleItem, VoucherType } from "@/types/sale";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { Plus, Trash2 } from "lucide-react";
@@ -31,6 +33,31 @@ type PosPrefill = {
   banner: string;
 };
 
+function voucherHint(client: Client | undefined, voucher: VoucherType) {
+  if (!client || voucher === "ninguno") return "Esta venta no emite comprobante.";
+  if (voucher === "boleta") {
+    const document =
+      client.documentType && client.documentNumber
+        ? `${client.documentType} ${client.documentNumber}`
+        : "";
+    return document
+      ? `Boleta a nombre de ${client.name}, ${document}.`
+      : `Boleta a nombre de ${client.name}. La ficha no tiene documento.`;
+  }
+  if (client.ruc && client.businessName) {
+    return `Factura con el RUC de la ficha: ${client.ruc} · ${client.businessName}. Si lo cambias, vale solo para esta venta.`;
+  }
+  return "Esta ficha no tiene RUC. Lo que escribas aquí vale solo para esta venta. Para dejarlo listo, asócialo en el cliente.";
+}
+
+function billingFor(client: Client | undefined, voucher: VoucherType) {
+  if (!client || voucher === "ninguno") return { documentNumber: "", businessName: "" };
+  if (voucher === "factura") {
+    return { documentNumber: client.ruc ?? "", businessName: client.businessName ?? "" };
+  }
+  return { documentNumber: client.documentNumber ?? "", businessName: "" };
+}
+
 function buildPosPrefill(
   searchParams: URLSearchParams,
   defaultClientId: string,
@@ -43,9 +70,10 @@ function buildPosPrefill(
   if (aptId) {
     const apt = appointmentsService.getAppointmentById(aptId);
     if (apt) {
+      const catalog = catalogService.getServices();
       const svc =
-        catalogServices.find((s) => s.category === apt.serviceType) ??
-        catalogServices.find((s) => s.id === "svc-1");
+        catalog.find((s) => s.category === apt.serviceType) ??
+        catalog.find((s) => s.category === "consulta");
       const patient = patientsService.getPatientById(apt.patientId);
       const client = clientsService.getClientById(apt.clientId);
       return {
@@ -74,16 +102,17 @@ function buildPosPrefill(
   if (grmId) {
     const grm = groomingService.getAll().find((g) => g.id === grmId);
     if (grm) {
-      const priceMap: Record<string, string> = {
-        bano: "svc-6",
-        corte: "svc-5",
-        bano_medicado: "svc-6",
-        corte_unas: "svc-cut",
-        grooming_completo: "svc-5",
+      const nameMap: Record<string, string> = {
+        bano: "Baño",
+        corte: "Grooming completo",
+        bano_medicado: "Baño",
+        corte_unas: "Corte de uñas",
+        grooming_completo: "Grooming completo",
       };
+      const catalog = catalogService.getServices();
       const svc =
-        catalogServices.find((s) => s.id === priceMap[grm.service]) ??
-        catalogServices.find((s) => s.id === "svc-5");
+        catalog.find((s) => s.name === nameMap[grm.service]) ??
+        catalog.find((s) => s.category === "grooming");
       const patient = patientsService.getPatientById(grm.patientId);
       return {
         clientId: grm.clientId,
@@ -162,8 +191,9 @@ export function PosView() {
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("efectivo");
   const [voucherType, setVoucherType] = useState<VoucherType>("boleta");
-  const [documentNumber, setDocumentNumber] = useState("");
-  const [businessName, setBusinessName] = useState("");
+  const openingBill = billingFor(clientsService.getClientById(prefill.clientId), "boleta");
+  const [documentNumber, setDocumentNumber] = useState(openingBill.documentNumber);
+  const [businessName, setBusinessName] = useState(openingBill.businessName);
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
   const [contextBanner, setContextBanner] = useState(prefill.banner);
 
@@ -175,9 +205,14 @@ export function PosView() {
     setGroomingId(prefill.groomingId);
     setItems(prefill.items);
     setContextBanner(prefill.banner);
+    const bill = billingFor(clientsService.getClientById(prefill.clientId), "boleta");
+    setVoucherType("boleta");
+    setDocumentNumber(bill.documentNumber);
+    setBusinessName(bill.businessName);
   }
 
   const pets = patientsService.getPatientsByClientId(clientId);
+  const catalogServices = catalogService.getServices();
 
   const subtotal = items.reduce((a, i) => a + i.total, 0);
   const total = Math.max(0, subtotal - discount);
@@ -236,7 +271,7 @@ export function PosView() {
     });
   };
 
-  const confirmSale = () => {
+  const confirmSale = async () => {
     if (!clientId || items.length === 0) {
       toast("Agrega al menos un ítem y un cliente");
       return;
@@ -245,7 +280,7 @@ export function PosView() {
       toast("Para factura se requiere RUC y razón social");
       return;
     }
-    const sale = salesService.createSale({
+    const sale = await salesService.createSale({
       date: DEMO_TODAY,
       time: new Date().toLocaleTimeString("es-PE", {
         hour: "2-digit",
@@ -267,14 +302,14 @@ export function PosView() {
     });
 
     if (appointmentId) {
-      appointmentsService.updateStatus(appointmentId, "pagada");
-      appointmentsService.updateAppointment(appointmentId, {
+      await appointmentsService.updateStatus(appointmentId, "pagada");
+      await appointmentsService.updateAppointment(appointmentId, {
         saleId: sale.id,
       });
     }
 
     if (groomingId) {
-      groomingService.updateStatus(groomingId, "entregada");
+      await groomingService.updateStatus(groomingId, "entregada");
     }
 
     setLastSaleId(sale.id);
@@ -283,7 +318,7 @@ export function PosView() {
     setAppointmentId(null);
     setGroomingId(null);
     setContextBanner("");
-    refresh();
+    await refresh();
     toast("✓ Venta registrada — inventario y cita actualizados");
     if (voucherType !== "ninguno") voucherModal.openModal();
   };
@@ -310,6 +345,12 @@ export function PosView() {
                   e.target.value,
                 );
                 setPatientId(next[0]?.id ?? "");
+                const bill = billingFor(
+                  clientsService.getClientById(e.target.value),
+                  voucherType,
+                );
+                setDocumentNumber(bill.documentNumber);
+                setBusinessName(bill.businessName);
               }}
             />
             <Select
@@ -417,26 +458,37 @@ export function PosView() {
               label="Comprobante"
               options={[
                 { value: "ninguno", label: "Sin comprobante" },
-                { value: "boleta", label: "Boleta" },
-                { value: "factura", label: "Factura" },
+                { value: "boleta", label: "Boleta · persona natural" },
+                { value: "factura", label: "Factura · RUC" },
               ]}
               value={voucherType}
-              onChange={(e) => setVoucherType(e.target.value as VoucherType)}
+              onChange={(e) => {
+                const next = e.target.value as VoucherType;
+                setVoucherType(next);
+                const bill = billingFor(clientsService.getClientById(clientId), next);
+                setDocumentNumber(bill.documentNumber);
+                setBusinessName(bill.businessName);
+              }}
             />
             {voucherType === "boleta" ? (
               <Input
-                label="DNI"
+                label={
+                  clientsService.getClientById(clientId)?.documentType === "CE"
+                    ? "Carné"
+                    : "Documento"
+                }
                 value={documentNumber}
                 onChange={(e) => setDocumentNumber(e.target.value)}
-                placeholder="8 dígitos"
+                placeholder="DNI, carné u otro"
               />
             ) : null}
             {voucherType === "factura" ? (
               <>
                 <Input
                   label="RUC"
+                  inputMode="numeric"
                   value={documentNumber}
-                  onChange={(e) => setDocumentNumber(e.target.value)}
+                  onChange={(e) => setDocumentNumber(e.target.value.replace(/\D/g, "").slice(0, 11))}
                 />
                 <Input
                   label="Razón social"
@@ -445,6 +497,9 @@ export function PosView() {
                 />
               </>
             ) : null}
+            <p className="text-xs leading-relaxed text-muted sm:col-span-2">
+              {voucherHint(clientsService.getClientById(clientId), voucherType)}
+            </p>
           </div>
 
           <div className="mt-4 flex items-center justify-between border-t border-border pt-4">

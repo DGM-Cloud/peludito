@@ -1,5 +1,7 @@
-export const DEMO_TODAY = "2026-09-22";
-export const DEMO_NOW = "2026-09-22T09:15:00";
+import { todayISODate } from "@/utils/formatDate";
+
+export const DEMO_TODAY = todayISODate();
+export const DEMO_NOW = `${DEMO_TODAY}T09:15:00`;
 
 export const clinics = [
   {

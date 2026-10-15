@@ -10,7 +10,7 @@ export default function PatientsPage() {
     <PageContainer>
       <PageHeader
         title="Pacientes"
-        description="Gestiona las mascotas de tu veterinaria."
+        description="Fichas de las mascotas, con tutor, vacunas y alertas."
       />
       <Suspense fallback={<p className="text-sm text-muted">Cargando…</p>}>
         <PatientsView />

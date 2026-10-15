@@ -32,6 +32,12 @@ export const mainNavigation: NavItem[] = [
     roles: ["recepcion", "caja", "administrador"],
   },
   {
+    label: "Mis consultas",
+    href: "/consultas",
+    icon: "Stethoscope",
+    roles: ["veterinario", "administrador"],
+  },
+  {
     label: "Historias clínicas",
     href: "/medical-records",
     icon: "FileText",

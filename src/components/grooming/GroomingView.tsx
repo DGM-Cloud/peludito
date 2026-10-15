@@ -16,13 +16,15 @@ import { clientsService } from "@/services/clients.service";
 import { groomingService } from "@/services/grooming.service";
 import { patientsService } from "@/services/patients.service";
 import type { GroomingService } from "@/types/grooming";
-import { formatDate } from "@/utils/formatDate";
+import { formatDate, formatLongDate } from "@/utils/formatDate";
+import { cn } from "@/utils/cn";
+import { groomingShareText, whatsappHref } from "@/utils/whatsapp";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
 export function GroomingView() {
-  const { clinicId, version, refresh } = useDemo();
+  const { clinicId, clinic, version, refresh } = useDemo();
   const { toast } = useToast();
   const modal = useModal();
 
@@ -35,25 +37,75 @@ export function GroomingView() {
   const clients = clientsService.getClients();
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const pets = patientsService.getPatientsByClientId(clientId);
+  const [patientIds, setPatientIds] = useState<string[]>(pets[0] ? [pets[0].id] : []);
   const [form, setForm] = useState({
-    patientId: pets[0]?.id ?? "",
     service: "grooming_completo" as GroomingService,
     date: DEMO_TODAY,
     time: "15:00",
     professional: "Karla Ruiz",
   });
+  const [shareNames, setShareNames] = useState<string[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    groomingService.create({
-      ...form,
-      clientId,
-      clinicId,
-    });
-    toast("✓ Reserva de grooming creada");
+  const closeModal = () => {
+    setShareNames(null);
+    setError("");
     modal.closeModal();
-    refresh();
   };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (patientIds.length === 0) return;
+    setSaving(true);
+    setError("");
+    const saved: string[] = [];
+    try {
+      for (const patientId of patientIds) {
+        await groomingService.create({
+          patientId,
+          service: form.service,
+          date: form.date,
+          time: form.time,
+          professional: form.professional,
+          clientId,
+          clinicId,
+        });
+        saved.push(patientsService.getPatientById(patientId)?.name ?? "Mascota");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo crear la reserva");
+    } finally {
+      setSaving(false);
+    }
+    if (saved.length === 0) return;
+    await refresh();
+    setShareNames(saved);
+    if (saved.length < patientIds.length) {
+      setError(
+        (current) =>
+          `${current} ${saved.join(", ")} sí quedaron agendadas.`.trim(),
+      );
+    }
+  };
+
+  const selectedClient = clientsService.getClientById(clientId);
+  const serviceName =
+    groomingServices.find((item) => item.value === form.service)?.label ?? "Grooming";
+  const shareMessage = shareNames
+    ? groomingShareText({
+        clinicName: clinic.name,
+        clientName: selectedClient?.name ?? "",
+        serviceName,
+        dateLabel: formatLongDate(form.date),
+        time: form.time,
+        professional: form.professional,
+        petNames: shareNames,
+      })
+    : "";
+  const whatsappLink = shareMessage
+    ? whatsappHref(selectedClient?.phone ?? "", shareMessage)
+    : "";
 
   return (
     <>
@@ -110,8 +162,7 @@ export function GroomingView() {
                       size="sm"
                       variant="secondary"
                       onClick={() => {
-                        groomingService.updateStatus(g.id, "en_proceso");
-                        refresh();
+                        void groomingService.updateStatus(g.id, "en_proceso").then(() => refresh());
                       }}
                     >
                       Iniciar
@@ -121,9 +172,10 @@ export function GroomingView() {
                     <Button
                       size="sm"
                       onClick={() => {
-                        groomingService.updateStatus(g.id, "lista");
-                        toast("✓ Mascota lista para entrega");
-                        refresh();
+                        void groomingService.updateStatus(g.id, "lista").then(() => {
+                          toast("✓ Mascota lista para entrega");
+                          return refresh();
+                        });
                       }}
                     >
                       Marcar lista
@@ -143,8 +195,7 @@ export function GroomingView() {
                         size="sm"
                         variant="secondary"
                         onClick={() => {
-                          groomingService.updateStatus(g.id, "entregada");
-                          refresh();
+                          void groomingService.updateStatus(g.id, "entregada").then(() => refresh());
                         }}
                       >
                         Entregar
@@ -160,36 +211,98 @@ export function GroomingView() {
 
       <Modal
         open={modal.open}
-        onClose={modal.closeModal}
-        title="Nueva reserva de grooming"
+        onClose={closeModal}
+        title={shareNames ? "Reserva lista" : "Nueva reserva de grooming"}
         footer={
-          <>
-            <Button variant="outline" onClick={modal.closeModal}>
-              Cancelar
-            </Button>
-            <Button type="submit" form="grm-form">
-              Confirmar
-            </Button>
-          </>
+          shareNames ? (
+            <Button onClick={closeModal}>Cerrar</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={closeModal}>
+                Cancelar
+              </Button>
+              <Button type="submit" form="grm-form" disabled={saving || patientIds.length === 0}>
+                {saving
+                  ? "Guardando…"
+                  : patientIds.length > 1
+                    ? `Confirmar ${patientIds.length} reservas`
+                    : "Confirmar"}
+              </Button>
+            </>
+          )
         }
       >
+        {shareNames ? (
+          <div className="space-y-4">
+            <p className="text-sm text-foreground">
+              {shareNames.length === 1
+                ? `${shareNames[0]} quedó para ${serviceName} el ${formatLongDate(form.date)} a las ${form.time}.`
+                : `${shareNames.join(", ")} quedaron para ${serviceName} el ${formatLongDate(form.date)} a las ${form.time}.`}
+            </p>
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            <div className="rounded-xl bg-background px-3 py-3">
+              <p className="whitespace-pre-wrap text-sm text-foreground">{shareMessage}</p>
+            </div>
+            {whatsappLink ? (
+              <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
+                <Button>Enviar por WhatsApp</Button>
+              </a>
+            ) : (
+              <p className="text-sm text-muted">
+                Este cliente no tiene un celular válido para WhatsApp. Comparte el mensaje de otra forma.
+              </p>
+            )}
+          </div>
+        ) : (
         <form id="grm-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
           <Select
             label="Cliente"
             options={clients.map((c) => ({ value: c.id, label: c.name }))}
             value={clientId}
             onChange={(e) => {
-              setClientId(e.target.value);
-              const next = patientsService.getPatientsByClientId(e.target.value);
-              setForm({ ...form, patientId: next[0]?.id ?? "" });
+              const nextId = e.target.value;
+              setClientId(nextId);
+              const next = patientsService.getPatientsByClientId(nextId);
+              setPatientIds(next.length === 1 ? [next[0].id] : []);
             }}
           />
-          <Select
-            label="Mascota"
-            options={pets.map((p) => ({ value: p.id, label: p.name }))}
-            value={form.patientId}
-            onChange={(e) => setForm({ ...form, patientId: e.target.value })}
-          />
+          <div className="sm:col-span-2">
+            <p className="text-sm font-medium text-foreground">Mascotas</p>
+            {pets.length === 0 ? (
+              <p className="mt-2 text-sm text-muted">Este cliente no tiene mascotas.</p>
+            ) : (
+              <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+                {pets.map((pet) => {
+                  const selected = patientIds.includes(pet.id);
+                  return (
+                    <button
+                      key={pet.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() =>
+                        setPatientIds((current) =>
+                          current.includes(pet.id)
+                            ? current.filter((id) => id !== pet.id)
+                            : [...current, pet.id],
+                        )
+                      }
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-left transition-colors",
+                        selected
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-surface hover:border-primary/40",
+                      )}
+                    >
+                      <span className="block text-sm font-medium">{pet.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {patientIds.length > 1 ? (
+              <p className="mt-2 text-xs text-muted">Se agendan a la misma hora.</p>
+            ) : null}
+          </div>
           <Select
             label="Servicio"
             options={groomingServices.map((s) => ({
@@ -218,7 +331,9 @@ export function GroomingView() {
             value={form.time}
             onChange={(e) => setForm({ ...form, time: e.target.value })}
           />
+          {error ? <p className="sm:col-span-2 text-sm text-danger">{error}</p> : null}
         </form>
+        )}
       </Modal>
     </>
   );

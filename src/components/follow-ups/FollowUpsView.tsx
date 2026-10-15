@@ -69,11 +69,12 @@ export function FollowUpsView() {
                       size="sm"
                       variant="secondary"
                       onClick={() => {
-                        followUpsService.updateFollowUp(fu.id, {
-                          status: "contactado",
-                        });
-                        toast("✓ Marcado como contactado");
-                        refresh();
+                        void followUpsService
+                          .updateFollowUp(fu.id, { status: "contactado" })
+                          .then(() => {
+                            toast("✓ Marcado como contactado");
+                            return refresh();
+                          });
                       }}
                     >
                       Contactado
@@ -81,11 +82,12 @@ export function FollowUpsView() {
                     <Button
                       size="sm"
                       onClick={() => {
-                        followUpsService.updateFollowUp(fu.id, {
-                          status: "completado",
-                        });
-                        toast("✓ Seguimiento completado");
-                        refresh();
+                        void followUpsService
+                          .updateFollowUp(fu.id, { status: "completado" })
+                          .then(() => {
+                            toast("✓ Seguimiento completado");
+                            return refresh();
+                          });
                       }}
                     >
                       Completar

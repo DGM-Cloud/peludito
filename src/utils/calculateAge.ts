@@ -1,5 +1,7 @@
 export function calculateAge(birthDate: string, reference = new Date()): string {
-  const birth = new Date(birthDate);
+  if (!birthDate) return "Edad no registrada";
+  const birth = new Date(`${birthDate.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(birth.getTime())) return "Edad no registrada";
   let years = reference.getFullYear() - birth.getFullYear();
   let months = reference.getMonth() - birth.getMonth();
 

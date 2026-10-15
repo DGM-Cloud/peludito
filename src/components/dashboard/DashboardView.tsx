@@ -14,8 +14,7 @@ import { reportsService } from "@/services/reports.service";
 import { veterinariansService } from "@/services/veterinarians.service";
 import { appointmentStatuses } from "@/data/constants/statuses";
 import { formatCurrency } from "@/utils/formatCurrency";
-import { getGreeting } from "@/utils/formatDate";
-import { siteConfig } from "@/config/site";
+import { getGreeting, todayISODate } from "@/utils/formatDate";
 import {
   CalendarDays,
   ClipboardPlus,
@@ -29,7 +28,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 export function DashboardView() {
-  const { version, role, refresh } = useDemo();
+  const { version, role, refresh, publish, fullName } = useDemo();
   const modal = useModal();
 
   const data = useMemo(() => {
@@ -51,7 +50,7 @@ export function DashboardView() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            {getGreeting()}, {siteConfig.demoUser.shortName}
+            {getGreeting()}, {fullName.split(" ")[0]}
           </h1>
           <p className="mt-1 text-sm text-muted">
             ¿Qué necesita tu equipo atender ahora? · Vista{" "}
@@ -75,9 +74,9 @@ export function DashboardView() {
               Nuevo paciente
             </Button>
           </Link>
-          <Link href="/medical-records">
+          <Link href="/consultas">
             <Button size="sm" variant="outline" leftIcon={<ClipboardPlus className="h-4 w-4" />}>
-              Registrar consulta
+              Mis consultas
             </Button>
           </Link>
           <Link href="/pos">
@@ -150,7 +149,11 @@ export function DashboardView() {
                           </p>
                           <p className="text-xs text-muted">
                             {veterinariansService.getVeterinarianById(apt.veterinarianId)?.name}
+                            {apt.durationMinutes ? ` · ${apt.durationMinutes} min` : ""}
                           </p>
+                          {apt.clientReply === "no_puede" ? (
+                            <p className="text-xs font-medium text-warning">No puede asistir</p>
+                          ) : null}
                         </div>
                       </div>
                       <StatusBadge
@@ -233,11 +236,13 @@ export function DashboardView() {
       <AppointmentForm
         open={modal.open}
         onClose={modal.closeModal}
-        onSubmit={(data) => {
-          appointmentsService.createAppointment(data);
-          refresh();
+        onSubmit={async (data) => {
+          const created = await appointmentsService.createAppointment(data);
+          publish();
+          void refresh();
+          return created;
         }}
-        defaultDate={DEMO_TODAY}
+        defaultDate={todayISODate()}
       />
     </div>
   );

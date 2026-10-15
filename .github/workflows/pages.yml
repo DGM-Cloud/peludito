@@ -1,18 +1,10 @@
-name: Deploy GitHub Pages
+name: Build
 
 on:
   push:
     branches: [master]
+  pull_request:
   workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   build:
@@ -26,17 +18,5 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          GITHUB_PAGES: "true"
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: out
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: public-anon-key

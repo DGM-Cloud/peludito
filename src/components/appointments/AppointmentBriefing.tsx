@@ -15,20 +15,13 @@ import { patientsService } from "@/services/patients.service";
 import { vaccinationsService } from "@/services/vaccinations.service";
 import { veterinariansService } from "@/services/veterinarians.service";
 import type { Appointment } from "@/types/appointment";
-import { calculateAge } from "@/utils/calculateAge";
+import { formatPatientAge, speciesLabel } from "@/utils/patient-fields";
 import { assetPath } from "@/utils/assetPath";
 import { formatDate } from "@/utils/formatDate";
 import { formatPhone } from "@/utils/formatPhone";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-
-const speciesLabel = {
-  perro: "Perro",
-  gato: "Gato",
-  ave: "Ave",
-  conejo: "Conejo",
-} as const;
 
 export function AppointmentBriefing({
   appointment,
@@ -116,11 +109,11 @@ export function AppointmentBriefing({
           <dl className="mt-5 space-y-4">
             <Fact
               label="Especie"
-              value={`${speciesLabel[patient.species]} · ${patient.breed}`}
+              value={`${speciesLabel(patient.species)} · ${patient.breed}`}
             />
             <Fact
               label="Sexo y edad"
-              value={`${patient.sex === "hembra" ? "Hembra" : "Macho"} · ${calculateAge(patient.birthDate)}`}
+              value={`${patient.sex === "hembra" ? "Hembra" : "Macho"} · ${formatPatientAge(patient)}`}
             />
             <Fact label="Peso" value={`${patient.weight} kg`} />
             <Fact label="Propietario" value={owner?.name ?? "Sin propietario"} />

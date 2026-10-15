@@ -255,9 +255,9 @@ export function InventoryView() {
       <ProductForm
         open={modal.open}
         onClose={modal.closeModal}
-        onSubmit={(data) => {
-          inventoryService.createProduct(data);
-          refresh();
+        onSubmit={async (data) => {
+          await inventoryService.createProduct(data);
+          await refresh();
         }}
       />
     </>

@@ -3,10 +3,10 @@
 import { AppointmentBriefing } from "@/components/appointments/AppointmentBriefing";
 import { AppointmentContextMenu } from "@/components/appointments/AppointmentContextMenu";
 import { AppointmentForm } from "@/components/appointments/AppointmentForm";
+import { ReceptionBoard } from "@/components/appointments/ReceptionBoard";
+import { TransferTratanteModal } from "@/components/appointments/TransferTratanteModal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { StatusBadge } from "@/components/ui/StatCard";
 import { Tabs } from "@/components/ui/Tabs";
 import { DEMO_TODAY } from "@/config/demo";
 import { appointmentStatuses } from "@/data/constants/statuses";
@@ -19,18 +19,14 @@ import { patientsService } from "@/services/patients.service";
 import { veterinariansService } from "@/services/veterinarians.service";
 import type { Appointment, AppointmentStatus } from "@/types/appointment";
 import { cn } from "@/utils/cn";
-import { assetPath } from "@/utils/assetPath";
+import { formatLongDate } from "@/utils/formatDate";
+import { appointmentShareText, whatsappHref } from "@/utils/whatsapp";
 import { useToast } from "@/components/ui/Toast";
-import {
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  MoreHorizontal,
-  Plus,
-} from "lucide-react";
-import Image from "next/image";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+const NOTICE_KEY = "peludito.wa-notified";
 
 type ViewMode = "day" | "week" | "month";
 
@@ -54,7 +50,8 @@ function addDays(d: Date, n: number) {
 }
 
 export function AppointmentsView() {
-  const { version, refresh, clinicId } = useDemo();
+  const { version, refresh, publish, clinicId, clinic, role, veterinarianId } =
+    useDemo();
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -68,6 +65,24 @@ export function AppointmentsView() {
     y: number;
   } | null>(null);
   const [briefingId, setBriefingId] = useState<string | null>(null);
+  const [transferApt, setTransferApt] = useState<Appointment | null>(null);
+  const canTransfer = role === "recepcion" || role === "administrador";
+  const openingConsultId = useRef<string | null>(null);
+  const [consultOpening, setConsultOpening] = useState<string | null>(null);
+  const pendingStatusId = useRef<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notifiedIds, setNotifiedIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(NOTICE_KEY);
+      if (!raw) return;
+      const ids = JSON.parse(raw) as unknown;
+      if (Array.isArray(ids)) setNotifiedIds(new Set(ids.filter((id) => typeof id === "string")));
+    } catch {
+      /* el aviso queda solo en esta sesión */
+    }
+  }, []);
 
   const prefillClientId = searchParams.get("client") ?? undefined;
   const prefillPatientId = searchParams.get("patient") ?? undefined;
@@ -121,38 +136,49 @@ export function AppointmentsView() {
     setBriefingId(apt.id);
   };
 
-  const setStatus = (id: string, status: AppointmentStatus) => {
+  const setStatus = async (id: string, status: AppointmentStatus) => {
+    if (pendingStatusId.current) return;
     if (status === "cancelada" || status === "no_asistio") {
       const label =
         status === "cancelada" ? "cancelar esta cita" : "marcar como no asistió";
       if (!window.confirm(`¿Seguro que deseas ${label}?`)) return;
     }
-    const updated = appointmentsService.updateStatus(id, status);
-    if (!updated) {
-      toast("Ese cambio no está permitido. La cita solo avanza.");
+    pendingStatusId.current = id;
+    setBusyId(id);
+    try {
+      await appointmentsService.updateStatus(id, status);
+    } catch (reason) {
+      toast(reason instanceof Error ? reason.message : "Ese cambio no está permitido. La cita solo avanza.");
       return;
+    } finally {
+      pendingStatusId.current = null;
+      setBusyId(null);
     }
     const label =
       appointmentStatuses.find((s) => s.value === status)?.label ?? status;
     toast(`Estado actualizado: ${label}`, {
       label: "Deshacer",
       onClick: () => {
-        const reverted = appointmentsService.correctLastStep(id);
-        if (!reverted) {
-          toast("Ya no se puede deshacer ese cambio.");
-          return;
-        }
-        const back =
-          appointmentStatuses.find((s) => s.value === reverted.status)?.label ??
-          reverted.status;
-        toast(`Cita devuelta a ${back}`);
-        refresh();
+        void (async () => {
+          try {
+            const reverted = await appointmentsService.correctLastStep(id);
+            const back =
+              appointmentStatuses.find((s) => s.value === reverted.status)?.label ??
+              reverted.status;
+            toast(`Cita devuelta a ${back}`);
+            publish();
+            void refresh();
+          } catch {
+            toast("Ya no se puede deshacer ese cambio.");
+          }
+        })();
       },
     });
-    refresh();
+    publish();
+    void refresh();
   };
 
-  const correctStatus = (apt: Appointment) => {
+  const correctStatus = async (apt: Appointment) => {
     const target = appointmentsService.getCorrectionTarget(apt);
     if (!target) {
       toast(
@@ -175,40 +201,106 @@ export function AppointmentsView() {
     ) {
       return;
     }
-    const reverted = appointmentsService.correctLastStep(apt.id);
-    if (!reverted) {
+    try {
+      await appointmentsService.correctLastStep(apt.id);
+    } catch {
       toast("No se pudo corregir el estado.");
       return;
     }
     toast(`Cita devuelta a ${label}`);
-    refresh();
+    publish();
+    void refresh();
   };
 
-  const openConsult = (apt: Appointment) => {
-    let recordId = apt.medicalRecordId;
-    if (!recordId) {
-      const record = medicalRecordsService.createMedicalRecord({
-        patientId: apt.patientId,
-        veterinarianId: apt.veterinarianId,
-        date: apt.date,
-        reason: apt.reason,
-        symptoms: "",
-        diagnosis: "",
-        treatment: "",
-        medications: [],
-        status: "abierta",
+  const openConsult = async (apt: Appointment) => {
+    if (openingConsultId.current) return;
+    if (
+      role === "veterinario" &&
+      (!veterinarianId || apt.veterinarianId !== veterinarianId)
+    ) {
+      toast(
+        "Esta cita está asignada a otro médico. Pide a recepción que te la transfiera.",
+      );
+      return;
+    }
+    openingConsultId.current = apt.id;
+    const patientName =
+      patientsService.getPatientById(apt.patientId)?.name ?? "la mascota";
+    setConsultOpening(patientName);
+    setMenu(null);
+    setBriefingId(null);
+    try {
+      const current = appointmentsService.getAppointmentById(apt.id) ?? apt;
+      let recordId = current.medicalRecordId;
+      if (!recordId) {
+        const record = await medicalRecordsService.createMedicalRecord({
+          patientId: current.patientId,
+          veterinarianId: current.veterinarianId,
+          date: current.date,
+          reason: current.reason,
+          symptoms: "",
+          diagnosis: "",
+          treatment: "",
+          medications: [],
+          status: "abierta",
+        });
+        recordId = record.id;
+      }
+      await appointmentsService.updateAppointment(current.id, {
+        medicalRecordId: recordId,
       });
-      recordId = record.id;
+      if (current.status !== "en_consulta") {
+        await appointmentsService.updateStatus(current.id, "en_consulta");
+      }
+      publish();
+      void refresh();
+      router.push(`/consultas?record=${recordId}`);
+    } catch (reason) {
+      toast(
+        reason instanceof Error ? reason.message : "No se pudo abrir la consulta.",
+      );
+    } finally {
+      openingConsultId.current = null;
+      setConsultOpening(null);
     }
-    appointmentsService.updateAppointment(apt.id, {
-      medicalRecordId: recordId,
+  };
+
+  const notifyOwner = (apt: Appointment) => {
+    const patient = patientsService.getPatientById(apt.patientId);
+    const client = clientsService.getClientById(apt.clientId);
+    const vet = veterinariansService.getVeterinarianById(apt.veterinarianId);
+    if (!apt.publicToken) {
+      toast("Esta cita no tiene enlace para el cliente.");
+      return;
+    }
+    const href = whatsappHref(
+      client?.phone ?? "",
+      appointmentShareText({
+        clinicName: clinic.name,
+        clientName: client?.name ?? "",
+        petName: patient?.name ?? "tu mascota",
+        serviceName: apt.reason,
+        dateLabel: formatLongDate(apt.date),
+        time: apt.time,
+        vetName: vet?.name ?? "",
+        link: `${window.location.origin}/cita/${apt.publicToken}`,
+      }),
+    );
+    if (!href) {
+      toast("Este cliente no tiene un celular válido para WhatsApp.");
+      return;
+    }
+    window.open(href, "_blank", "noopener,noreferrer");
+    setNotifiedIds((current) => {
+      const next = new Set(current);
+      next.add(apt.id);
+      try {
+        localStorage.setItem(NOTICE_KEY, JSON.stringify([...next]));
+      } catch {
+        /* si el navegador bloquea el almacenamiento, el aviso sigue en pantalla */
+      }
+      return next;
     });
-    if (apt.status !== "en_consulta") {
-      appointmentsService.updateStatus(apt.id, "en_consulta");
-    }
-    refresh();
-    toast("✓ Consulta abierta — completa el diagnóstico");
-    router.push(`/medical-records?record=${recordId}`);
   };
 
   const navigate = (dir: -1 | 1) => {
@@ -219,13 +311,15 @@ export function AppointmentsView() {
 
   return (
     <>
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <MiniStat label="Citas" value={stats.total} />
-        <MiniStat label="Atendidas" value={stats.atendidas} />
-        <MiniStat label="Canceladas" value={stats.canceladas} />
-        <MiniStat label="No asistieron" value={stats.noAsistieron} />
-        <MiniStat label="Pendientes" value={stats.pendientes} />
-      </div>
+      {view === "day" ? null : (
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <MiniStat label="Citas" value={stats.total} />
+          <MiniStat label="Atendidas" value={stats.atendidas} />
+          <MiniStat label="Canceladas" value={stats.canceladas} />
+          <MiniStat label="No asistieron" value={stats.noAsistieron} />
+          <MiniStat label="Pendientes" value={stats.pendientes} />
+        </div>
+      )}
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
@@ -249,6 +343,13 @@ export function AppointmentsView() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
+          <p className="text-sm font-semibold text-foreground">
+            {cursor.toLocaleDateString("es-PE", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+            })}
+          </p>
           <select
             className="h-9 rounded-lg border border-border bg-surface px-2 text-sm"
             value={vetFilter}
@@ -269,94 +370,26 @@ export function AppointmentsView() {
       </div>
 
       {view === "day" ? (
-        <Card padding={false}>
-          {dayItems.length === 0 ? (
-            <EmptyState
-              title="No hay citas para este día."
-              description="Agenda una nueva cita para comenzar."
-              actionLabel="Nueva cita"
-              onAction={modal.openModal}
-              icon={<Calendar className="h-5 w-5" />}
-            />
-          ) : (
-            <ul className="divide-y divide-border">
-              <li className="px-4 py-2 text-xs text-muted">
-                Clic en la cita para ver al paciente. Clic derecho o ⋯ para cambiar el estado.
-              </li>
-              {dayItems.map((apt) => {
-                const patient = patientsService.getPatientById(apt.patientId);
-                const client = clientsService.getClientById(apt.clientId);
-                const vet = veterinariansService.getVeterinarianById(
-                  apt.veterinarianId,
-                );
-                const status = appointmentStatuses.find(
-                  (s) => s.value === apt.status,
-                );
-
-                return (
-                  <li key={apt.id} className="flex items-stretch">
-                    <button
-                      type="button"
-                      onClick={() => openBriefing(apt)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        openMenu(apt, e.clientX, e.clientY);
-                      }}
-                      className="flex min-w-0 flex-1 cursor-context-menu items-center gap-3 px-4 py-3 text-left hover:bg-background/70"
-                    >
-                      <span className="w-14 shrink-0 text-sm font-semibold text-primary">
-                        {apt.time}
-                      </span>
-                      <Image
-                        src={assetPath(`/patients/${apt.patientId}.jpg`)}
-                        alt=""
-                        width={40}
-                        height={40}
-                        className="h-10 w-10 shrink-0 rounded-full object-cover"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">
-                          <span className="text-primary">{patient?.name}</span>
-                          {" · "}
-                          {apt.reason}
-                        </p>
-                        <p className="truncate text-xs text-muted">
-                          {client?.name} · {vet?.name}
-                        </p>
-                      </div>
-                      <StatusBadge
-                        label={status?.label ?? apt.status}
-                        tone={
-                          (status?.color as
-                            | "success"
-                            | "warning"
-                            | "primary"
-                            | "danger"
-                            | "muted") ?? "default"
-                        }
-                      />
-                    </button>
-                    <div className="flex items-center pr-2">
-                      <button
-                        type="button"
-                        aria-label={`Acciones de la cita de ${patient?.name ?? "paciente"}`}
-                        aria-haspopup="menu"
-                        className="rounded-lg p-2 text-muted hover:bg-background hover:text-foreground"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          openMenu(apt, rect.left, rect.bottom + 6);
-                        }}
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
+        <ReceptionBoard
+          dateIso={toISODate(cursor)}
+          vets={
+            vetFilter === "all"
+              ? vets.map((vet) => ({ id: vet.id, name: vet.name }))
+              : vets
+                  .filter((vet) => vet.id === vetFilter)
+                  .map((vet) => ({ id: vet.id, name: vet.name }))
+          }
+          appointments={dayItems}
+          notifiedIds={notifiedIds}
+          busyId={busyId}
+          onOpen={openBriefing}
+          onArrive={(apt) => void setStatus(apt.id, "llego")}
+          onConsult={(apt) => void openConsult(apt)}
+          onCharge={(apt) => router.push(`/pos?appointment=${apt.id}`)}
+          onMenu={openMenu}
+          onNotify={notifyOwner}
+          onCreate={modal.openModal}
+        />
       ) : null}
 
       {view === "week" ? (
@@ -449,42 +482,6 @@ export function AppointmentsView() {
         </Card>
       ) : null}
 
-      {/* Multi-vet board for day */}
-      {view === "day" && vetFilter === "all" ? (
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
-          {vets.map((vet) => {
-            const list = dayItems.filter((a) => a.veterinarianId === vet.id);
-            return (
-              <Card key={vet.id} className="!p-4">
-                <p className="mb-3 text-sm font-semibold">{vet.name}</p>
-                {list.length === 0 ? (
-                  <p className="text-xs text-muted">Sin citas</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {list.map((a) => (
-                      <li key={a.id}>
-                        <button
-                          type="button"
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            openMenu(a, e.clientX, e.clientY);
-                          }}
-                          onClick={() => openBriefing(a)}
-                          className="w-full cursor-context-menu rounded-md px-1 py-0.5 text-left text-xs hover:bg-background"
-                        >
-                          <span className="font-semibold text-primary">{a.time}</span>{" "}
-                          {patientsService.getPatientById(a.patientId)?.name}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-      ) : null}
-
       {briefingId
         ? (() => {
             const apt = appointments.find((a) => a.id === briefingId);
@@ -519,10 +516,24 @@ export function AppointmentsView() {
                 onOpenConsult={() => openConsult(apt)}
                 onCharge={() => router.push(`/pos?appointment=${apt.id}`)}
                 onOpenPatient={() => router.push(`/patients/${apt.patientId}`)}
+                onNotify={() => notifyOwner(apt)}
+                onTransfer={
+                  canTransfer ? () => setTransferApt(apt) : undefined
+                }
               />
             );
           })()
         : null}
+
+      <TransferTratanteModal
+        appointment={transferApt}
+        open={Boolean(transferApt)}
+        onClose={() => setTransferApt(null)}
+        onDone={() => {
+          publish();
+          void refresh();
+        }}
+      />
 
       <AppointmentForm
         key={`apt-${prefillClientId ?? ""}-${prefillPatientId ?? ""}-${formOpen}`}
@@ -531,14 +542,29 @@ export function AppointmentsView() {
           modal.closeModal();
           if (urlOpen) router.replace("/appointments");
         }}
-        onSubmit={(data) => {
-          appointmentsService.createAppointment(data);
-          refresh();
+        onSubmit={async (data) => {
+          const created = await appointmentsService.createAppointment(data);
+          publish();
+          void refresh();
+          return created;
         }}
         defaultDate={toISODate(cursor)}
         defaultClientId={prefillClientId}
         defaultPatientId={prefillPatientId}
       />
+
+      {consultOpening ? (
+        <div
+          className="fixed inset-0 z-[80] flex flex-col items-center justify-center bg-background px-6"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-light border-t-primary" />
+          <p className="mt-4 text-base font-semibold text-foreground">Abriendo la consulta</p>
+          <p className="mt-1 text-sm text-muted">Preparando la historia de {consultOpening}</p>
+        </div>
+      ) : null}
     </>
   );
 }

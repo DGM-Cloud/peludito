@@ -9,8 +9,8 @@ export function useInventory(initial?: Product[]) {
     initial ?? inventoryService.getProducts(),
   );
 
-  const create = useCallback((data: CreateProductInput) => {
-    const created = inventoryService.createProduct(data);
+  const create = useCallback(async (data: CreateProductInput) => {
+    const created = await inventoryService.createProduct(data);
     setProducts(inventoryService.getProducts());
     return created;
   }, []);

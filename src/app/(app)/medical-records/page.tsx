@@ -10,7 +10,7 @@ export default function MedicalRecordsPage() {
     <PageContainer>
       <PageHeader
         title="Historias clínicas"
-        description="Consultas, diagnósticos y tratamientos."
+        description="Archivo clínico por paciente: diagnósticos, tratamientos y evolución. Para atender, usa Mis consultas."
       />
       <Suspense fallback={<p className="text-sm text-muted">Cargando…</p>}>
         <MedicalRecordsView />

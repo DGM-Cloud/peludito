@@ -1,60 +1,93 @@
-import { vaccinations as seed, medications } from "@/data/mock/vaccinations";
-import { followUpsService } from "@/services/follow-ups.service";
-import { patientsService } from "@/services/patients.service";
-import type { CreateVaccinationInput, Vaccination } from "@/types/vaccination";
-import { DEMO_TODAY } from "@/config/demo";
-
-let store: Vaccination[] = [...seed];
-
-function computeStatus(nextDue: string): Vaccination["status"] {
-  const today = new Date(DEMO_TODAY);
-  const due = new Date(nextDue);
-  const diff = (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-  if (diff < 0) return "vencida";
-  if (diff <= 7) return "proxima";
-  return "vigente";
-}
+import { api } from "@/lib/api";
+import { readSnapshot, rememberVaccination } from "@/lib/clinic-cache";
+import type {
+  CreateVaccinationInput,
+  UpdateVaccinationInput,
+  Vaccination,
+  VaccineCatalogItem,
+} from "@/types/vaccination";
 
 export const vaccinationsService = {
   getVaccinations(): Vaccination[] {
-    return store.map((v) => ({ ...v, status: computeStatus(v.nextDue) }));
+    return [...readSnapshot().vaccinations].sort((a, b) =>
+      b.dateApplied.localeCompare(a.dateApplied),
+    );
+  },
+
+  getById(id: string): Vaccination | undefined {
+    return this.getVaccinations().find((item) => item.id === id);
   },
 
   getByPatientId(patientId: string): Vaccination[] {
-    return this.getVaccinations().filter((v) => v.patientId === patientId);
+    return this.getVaccinations().filter((item) => item.patientId === patientId);
+  },
+
+  getByMedicalRecordId(medicalRecordId: string): Vaccination[] {
+    return this.getVaccinations().filter(
+      (item) => item.medicalRecordId === medicalRecordId,
+    );
   },
 
   getPending(): Vaccination[] {
     return this.getVaccinations().filter(
-      (v) => v.status === "proxima" || v.status === "vencida",
+      (item) => item.status === "proxima" || item.status === "vencida",
     );
   },
 
-  createVaccination(data: CreateVaccinationInput): Vaccination {
-    const vaccination: Vaccination = {
-      ...data,
-      id: `vac-${Date.now()}`,
-      status: computeStatus(data.nextDue),
-    };
-    store = [vaccination, ...store];
+  getCatalog(): VaccineCatalogItem[] {
+    return readSnapshot().vaccineCatalog.filter((item) => item.active);
+  },
 
-    const patient = patientsService.getPatientById(data.patientId);
-    if (patient) {
-      followUpsService.createFollowUp({
-        patientId: patient.id,
-        clientId: patient.clientId,
-        type: "vacuna",
-        title: `Próxima dosis: ${data.name} — ${patient.name}`,
-        dueDate: data.nextDue,
-        relatedId: vaccination.id,
-        status: "pendiente",
-      });
+  /** Última dosis por nombre de vacuna (carné). */
+  getCarnetByPatientId(patientId: string) {
+    const byName = new Map<string, Vaccination>();
+    for (const item of this.getByPatientId(patientId)) {
+      const prev = byName.get(item.name);
+      if (!prev || item.dateApplied > prev.dateApplied) {
+        byName.set(item.name, item);
+      }
     }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  },
 
-    return vaccination;
+  async createVaccination(data: CreateVaccinationInput): Promise<Vaccination> {
+    const created = await api<Vaccination>("/vaccinations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    rememberVaccination(created);
+    return created;
+  },
+
+  async updateVaccination(
+    id: string,
+    data: UpdateVaccinationInput,
+  ): Promise<Vaccination> {
+    const updated = await api<Vaccination>(`/vaccinations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+    rememberVaccination(updated);
+    return updated;
+  },
+
+  async completeSeries(id: string): Promise<Vaccination> {
+    return this.updateVaccination(id, { seriesStatus: "completada" });
+  },
+
+  async applyBooster(
+    id: string,
+    data: Partial<CreateVaccinationInput>,
+  ): Promise<Vaccination> {
+    const created = await api<Vaccination>(`/vaccinations/${id}/booster`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    rememberVaccination(created);
+    return created;
   },
 
   getMedicationsByPatientId(patientId: string) {
-    return medications.filter((m) => m.patientId === patientId);
+    return readSnapshot().medications.filter((item) => item.patientId === patientId);
   },
 };

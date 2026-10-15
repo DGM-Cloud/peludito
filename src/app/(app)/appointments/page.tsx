@@ -10,7 +10,7 @@ export default function AppointmentsPage() {
     <PageContainer>
       <PageHeader
         title="Citas"
-        description="Agenda visual de tu veterinaria."
+        description="La sala del día, una columna por veterinario."
       />
       <Suspense fallback={<p className="text-sm text-muted">Cargando agenda…</p>}>
         <AppointmentsView />

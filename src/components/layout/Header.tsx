@@ -2,14 +2,27 @@
 
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { Avatar } from "@/components/ui/Avatar";
-import { clinics, demoRoles } from "@/config/demo";
-import { siteConfig } from "@/config/site";
+import { createBrowserSupabase } from "@/lib/supabase/browser";
 import { useDemo } from "@/context/DemoProvider";
-import type { DemoRole } from "@/types/clinic";
-import { Menu } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function Header({ onMenuClick }: { onMenuClick: () => void }) {
-  const { clinicId, setClinicId, role, setRole, roleLabel } = useDemo();
+  const { clinic, roleLabel, fullName } = useDemo();
+  const router = useRouter();
+  const initials = fullName
+    .split(" ")
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  const logout = async () => {
+    const supabase = createBrowserSupabase();
+    await supabase.auth.signOut();
+    router.replace("/login");
+    router.refresh();
+  };
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-surface/90 backdrop-blur-md">
@@ -28,47 +41,25 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          <label className="hidden items-center lg:flex">
-            <span className="sr-only">Sede</span>
-            <select
-              value={clinicId}
-              onChange={(e) => setClinicId(e.target.value)}
-              className="h-9 max-w-[180px] rounded-lg border border-border bg-surface px-2 text-xs text-foreground"
-              aria-label="Seleccionar sede"
-            >
-              {clinics.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="hidden items-center sm:flex">
-            <span className="sr-only">Rol de trabajo</span>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as DemoRole)}
-              className="h-9 rounded-lg border border-border bg-surface px-2 text-xs text-foreground"
-              aria-label="Vista por rol"
-            >
-              {demoRoles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
+          <p className="hidden max-w-[180px] truncate text-xs text-muted lg:block">
+            {clinic.name}
+          </p>
+          <p className="hidden text-xs text-muted sm:block">{roleLabel}</p>
           <div className="flex items-center gap-2.5">
-            <Avatar initials={siteConfig.demoUser.initials} size="sm" />
+            <Avatar initials={initials || "P"} size="sm" />
             <div className="hidden text-left xl:block">
-              <p className="text-sm font-medium text-foreground">
-                {siteConfig.demoUser.shortName}
-              </p>
+              <p className="text-sm font-medium text-foreground">{fullName}</p>
               <p className="text-xs text-muted">{roleLabel}</p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="rounded-lg p-2 text-muted hover:bg-background hover:text-foreground"
+            aria-label="Cerrar sesión"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </header>

@@ -30,9 +30,9 @@ export function HospitalizationView() {
   const selected =
     items.find((h) => h.id === selectedId) ?? items[0] ?? null;
 
-  const addNote = () => {
+  const addNote = async () => {
     if (!selected || !note.trim()) return;
-    hospitalizationsService.addNote(selected.id, {
+    await hospitalizationsService.addNote(selected.id, {
       date: DEMO_TODAY,
       time: new Date().toLocaleTimeString("es-PE", {
         hour: "2-digit",
@@ -44,10 +44,10 @@ export function HospitalizationView() {
     });
     setNote("");
     toast("✓ Evolución registrada");
-    refresh();
+    await refresh();
   };
 
-  const discharge = () => {
+  const discharge = async () => {
     if (!selected) return;
     const patient = patientsService.getPatientById(selected.patientId);
     if (
@@ -57,10 +57,10 @@ export function HospitalizationView() {
     ) {
       return;
     }
-    hospitalizationsService.updateStatus(selected.id, "alta");
+    await hospitalizationsService.updateStatus(selected.id, "alta");
     toast("✓ Alta registrada — paciente listo para retiro");
     setSelectedId(null);
-    refresh();
+    await refresh();
   };
 
   return (

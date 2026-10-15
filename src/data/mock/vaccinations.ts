@@ -12,6 +12,10 @@ export const vaccinations: Vaccination[] = [
     nextDue: "2027-08-10",
     veterinarianId: "vet-1",
     status: "vigente",
+    route: "subcutanea",
+    seriesStatus: "activa",
+    site: "Escápula derecha",
+    doseMl: 1,
   },
   {
     id: "vac-2",
@@ -23,6 +27,8 @@ export const vaccinations: Vaccination[] = [
     nextDue: "2026-09-25",
     veterinarianId: "vet-1",
     status: "proxima",
+    route: "subcutanea",
+    seriesStatus: "activa",
   },
   {
     id: "vac-3",
@@ -34,6 +40,8 @@ export const vaccinations: Vaccination[] = [
     nextDue: "2027-09-20",
     veterinarianId: "vet-2",
     status: "vigente",
+    route: "subcutanea",
+    seriesStatus: "activa",
   },
   {
     id: "vac-4",
@@ -45,6 +53,8 @@ export const vaccinations: Vaccination[] = [
     nextDue: "2026-09-24",
     veterinarianId: "vet-1",
     status: "proxima",
+    route: "subcutanea",
+    seriesStatus: "activa",
   },
   {
     id: "vac-5",
@@ -56,6 +66,8 @@ export const vaccinations: Vaccination[] = [
     nextDue: "2026-09-19",
     veterinarianId: "vet-2",
     status: "vencida",
+    route: "nasal",
+    seriesStatus: "activa",
   },
   {
     id: "vac-6",
@@ -67,6 +79,8 @@ export const vaccinations: Vaccination[] = [
     nextDue: "2026-09-18",
     veterinarianId: "vet-2",
     status: "vencida",
+    route: "subcutanea",
+    seriesStatus: "activa",
   },
 ];
 

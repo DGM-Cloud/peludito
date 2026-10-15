@@ -9,8 +9,8 @@ export function usePatients(initial?: Patient[]) {
     initial ?? patientsService.getPatients(),
   );
 
-  const create = useCallback((data: CreatePatientInput) => {
-    const created = patientsService.createPatient(data);
+  const create = useCallback(async (data: CreatePatientInput) => {
+    const created = await patientsService.createPatient(data);
     setPatients(patientsService.getPatients());
     return created;
   }, []);

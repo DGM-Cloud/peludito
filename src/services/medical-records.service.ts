@@ -1,43 +1,35 @@
-import { medicalRecords as seedRecords } from "@/data/mock/medical-records";
-import type {
-  CreateMedicalRecordInput,
-  MedicalRecord,
-} from "@/types/medical-record";
-
-let recordsStore: MedicalRecord[] = [...seedRecords];
+import { api } from "@/lib/api";
+import { readSnapshot, rememberMedicalRecord } from "@/lib/clinic-cache";
+import type { CreateMedicalRecordInput, MedicalRecord } from "@/types/medical-record";
 
 export const medicalRecordsService = {
   getMedicalRecords(): MedicalRecord[] {
-    return [...recordsStore].sort((a, b) => b.date.localeCompare(a.date));
+    return [...readSnapshot().medicalRecords].sort((a, b) => b.date.localeCompare(a.date));
   },
 
   getMedicalRecordById(id: string): MedicalRecord | undefined {
-    return recordsStore.find((r) => r.id === id);
+    return this.getMedicalRecords().find((record) => record.id === id);
   },
 
   getRecordsByPatientId(patientId: string): MedicalRecord[] {
-    return recordsStore
-      .filter((r) => r.patientId === patientId)
-      .sort((a, b) => b.date.localeCompare(a.date));
+    return this.getMedicalRecords().filter((record) => record.patientId === patientId);
   },
 
-  createMedicalRecord(data: CreateMedicalRecordInput): MedicalRecord {
-    const record: MedicalRecord = {
-      ...data,
-      id: `mr-${Date.now()}`,
-      status: data.status ?? "abierta",
-    };
-    recordsStore = [record, ...recordsStore];
-    return record;
+  async createMedicalRecord(data: CreateMedicalRecordInput): Promise<MedicalRecord> {
+    const created = await api<MedicalRecord>("/medical-records", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    rememberMedicalRecord(created);
+    return created;
   },
 
-  updateMedicalRecord(
-    id: string,
-    data: Partial<MedicalRecord>,
-  ): MedicalRecord | undefined {
-    const index = recordsStore.findIndex((r) => r.id === id);
-    if (index === -1) return undefined;
-    recordsStore[index] = { ...recordsStore[index], ...data, id };
-    return recordsStore[index];
+  async updateMedicalRecord(id: string, data: Partial<MedicalRecord>): Promise<MedicalRecord> {
+    const updated = await api<MedicalRecord>(`/medical-records/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+    rememberMedicalRecord(updated);
+    return updated;
   },
 };

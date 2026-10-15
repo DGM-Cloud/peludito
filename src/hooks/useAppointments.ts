@@ -13,15 +13,15 @@ export function useAppointments(initial?: Appointment[]) {
     setAppointments(appointmentsService.getAppointments());
   }, []);
 
-  const create = useCallback((data: CreateAppointmentInput) => {
-    const created = appointmentsService.createAppointment(data);
+  const create = useCallback(async (data: CreateAppointmentInput) => {
+    const created = await appointmentsService.createAppointment(data);
     setAppointments(appointmentsService.getAppointments());
     return created;
   }, []);
 
   const updateStatus = useCallback(
-    (id: string, status: Appointment["status"]) => {
-      appointmentsService.updateStatus(id, status);
+    async (id: string, status: Appointment["status"]) => {
+      await appointmentsService.updateStatus(id, status);
       setAppointments(appointmentsService.getAppointments());
     },
     [],

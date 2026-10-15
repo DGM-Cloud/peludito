@@ -1,31 +1,27 @@
-import { followUps as seed } from "@/data/mock/follow-ups";
+import { api } from "@/lib/api";
+import { readSnapshot } from "@/lib/clinic-cache";
 import type { CreateFollowUpInput, FollowUp } from "@/types/follow-up";
-
-let store: FollowUp[] = [...seed];
 
 export const followUpsService = {
   getFollowUps(): FollowUp[] {
-    return [...store].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    return [...readSnapshot().followUps].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   },
 
   getPending(): FollowUp[] {
-    return this.getFollowUps().filter((f) => f.status === "pendiente");
+    return this.getFollowUps().filter((item) => item.status === "pendiente");
   },
 
-  createFollowUp(data: CreateFollowUpInput): FollowUp {
-    const item: FollowUp = {
-      ...data,
-      id: `fu-${Date.now()}`,
-      status: data.status ?? "pendiente",
-    };
-    store = [item, ...store];
-    return item;
+  async createFollowUp(data: CreateFollowUpInput): Promise<FollowUp> {
+    return api<FollowUp>("/follow-ups", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
-  updateFollowUp(id: string, data: Partial<FollowUp>): FollowUp | undefined {
-    const i = store.findIndex((f) => f.id === id);
-    if (i === -1) return undefined;
-    store[i] = { ...store[i], ...data, id };
-    return store[i];
+  async updateFollowUp(id: string, data: Partial<FollowUp>): Promise<FollowUp> {
+    return api<FollowUp>(`/follow-ups/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
   },
 };

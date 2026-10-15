@@ -1,9 +1,4 @@
-export const speciesOptions = [
-  { value: "perro", label: "Perro" },
-  { value: "gato", label: "Gato" },
-  { value: "ave", label: "Ave" },
-  { value: "conejo", label: "Conejo" },
-] as const;
+export { speciesOptions } from "@/utils/patient-fields";
 
 export const productCategories = [
   { value: "medicamentos", label: "Medicamentos" },

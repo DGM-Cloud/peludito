@@ -1,54 +1,48 @@
-import { hospitalizations as seed } from "@/data/mock/hospitalizations";
+import { api } from "@/lib/api";
+import { readSnapshot } from "@/lib/clinic-cache";
 import type {
   CreateHospitalizationInput,
   Hospitalization,
   HospitalizationNote,
 } from "@/types/hospitalization";
 
-let store: Hospitalization[] = [...seed];
-
 export const hospitalizationsService = {
   getHospitalizations(): Hospitalization[] {
-    return [...store];
+    return readSnapshot().hospitalizations;
   },
 
   getActive(): Hospitalization[] {
-    return store.filter((h) => h.status !== "alta");
+    return this.getHospitalizations().filter((item) => item.status !== "alta");
   },
 
   getById(id: string): Hospitalization | undefined {
-    return store.find((h) => h.id === id);
+    return this.getHospitalizations().find((item) => item.id === id);
   },
 
-  create(data: CreateHospitalizationInput): Hospitalization {
-    const item: Hospitalization = {
-      ...data,
-      id: `hosp-${Date.now()}`,
-      notes: data.notes ?? [],
-    };
-    store = [item, ...store];
-    return item;
+  async create(data: CreateHospitalizationInput): Promise<Hospitalization> {
+    return api<Hospitalization>("/hospitalizations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
-  addNote(id: string, note: Omit<HospitalizationNote, "id">): Hospitalization | undefined {
-    const i = store.findIndex((h) => h.id === id);
-    if (i === -1) return undefined;
-    const full: HospitalizationNote = { ...note, id: `hn-${Date.now()}` };
-    store[i] = { ...store[i], notes: [...store[i].notes, full] };
-    return store[i];
+  async addNote(
+    id: string,
+    note: Omit<HospitalizationNote, "id">,
+  ): Promise<Hospitalization> {
+    return api<Hospitalization>(`/hospitalizations/${id}/notes`, {
+      method: "POST",
+      body: JSON.stringify(note),
+    });
   },
 
-  updateStatus(
+  async updateStatus(
     id: string,
     status: Hospitalization["status"],
-  ): Hospitalization | undefined {
-    const i = store.findIndex((h) => h.id === id);
-    if (i === -1) return undefined;
-    store[i] = {
-      ...store[i],
-      status,
-      dischargeDate: status === "alta" ? new Date().toISOString().slice(0, 10) : store[i].dischargeDate,
-    };
-    return store[i];
+  ): Promise<Hospitalization> {
+    return api<Hospitalization>(`/hospitalizations/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
   },
 };

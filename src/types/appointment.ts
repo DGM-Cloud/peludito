@@ -17,6 +17,10 @@ export type AppointmentServiceType =
   | "emergencia"
   | "desparasitacion";
 
+export type AppointmentChannel = "presencial" | "telefono" | "whatsapp";
+
+export type ClientReply = "confirmada" | "no_puede";
+
 export type Appointment = {
   id: string;
   patientId: string;
@@ -27,6 +31,12 @@ export type Appointment = {
   time: string;
   reason: string;
   serviceType: AppointmentServiceType;
+  durationMinutes?: number;
+  estimatedPrice?: number;
+  channel?: AppointmentChannel;
+  remindClient?: boolean;
+  publicToken?: string;
+  clientReply?: ClientReply;
   notes?: string;
   status: AppointmentStatus;
   /** Estado inmediatamente anterior. Solo sirve para corregir un error. */
@@ -37,7 +47,7 @@ export type Appointment = {
 
 export type CreateAppointmentInput = Omit<
   Appointment,
-  "id" | "status" | "medicalRecordId" | "saleId"
+  "id" | "status" | "medicalRecordId" | "saleId" | "publicToken" | "clientReply"
 > & {
   status?: AppointmentStatus;
 };

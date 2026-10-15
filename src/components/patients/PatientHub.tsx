@@ -1,16 +1,19 @@
 "use client";
 
+import { Avatar } from "@/components/ui/Avatar";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { StatusBadge } from "@/components/ui/StatCard";
-import { WhatsAppAction } from "@/components/ui/WhatsAppAction";
 import { Tabs } from "@/components/ui/Tabs";
+import { WhatsAppAction } from "@/components/ui/WhatsAppAction";
 import {
   appointmentStatuses,
   paymentMethods,
   vaccinationStatuses,
 } from "@/data/constants/statuses";
+import { ClinicalAlerts, patientHasAlerts } from "@/components/patients/ClinicalAlerts";
+import { PatientFileActions } from "@/components/patients/PatientFileActions";
 import { appointmentsService } from "@/services/appointments.service";
 import { clientsService } from "@/services/clients.service";
 import { medicalRecordsService } from "@/services/medical-records.service";
@@ -18,126 +21,240 @@ import { salesService } from "@/services/sales.service";
 import { vaccinationsService } from "@/services/vaccinations.service";
 import { veterinariansService } from "@/services/veterinarians.service";
 import type { Patient } from "@/types/patient";
-import { calculateAge } from "@/utils/calculateAge";
 import { formatCurrency } from "@/utils/formatCurrency";
-import { formatDate } from "@/utils/formatDate";
-import { FileText } from "lucide-react";
+import { formatDate, formatTime } from "@/utils/formatDate";
+import { formatPhone } from "@/utils/formatPhone";
+import { formatPatientAge, reproductiveOptions, speciesLabel } from "@/utils/patient-fields";
+import { cn } from "@/utils/cn";
+import { ArrowLeft, Calendar, FileText, Scale, Syringe } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 export function PatientHub({ patient }: { patient: Patient }) {
   const [tab, setTab] = useState("resumen");
   const owner = clientsService.getClientById(patient.clientId);
   const history = medicalRecordsService.getRecordsByPatientId(patient.id);
   const vaccines = vaccinationsService.getByPatientId(patient.id);
+  const carnet = vaccinationsService.getCarnetByPatientId(patient.id);
+  const timeline = [
+    ...history.map((record) => ({
+      kind: "consulta" as const,
+      id: record.id,
+      date: record.date,
+      title: record.reason,
+      subtitle: record.diagnosis || "Sin diagnóstico aún",
+      veterinarianId: record.veterinarianId,
+      status: record.status,
+      href:
+        record.status === "abierta" || record.status === "seguimiento"
+          ? `/consultas?record=${record.id}`
+          : `/medical-records?patient=${patient.id}&highlight=${record.id}`,
+    })),
+    ...vaccines.map((vac) => ({
+      kind: "vacuna" as const,
+      id: vac.id,
+      date: vac.dateApplied,
+      title: `Vacuna: ${vac.name}`,
+      subtitle: `Lote ${vac.lot}${vac.nextDue ? ` · Próxima ${formatDate(vac.nextDue)}` : ""}`,
+      veterinarianId: vac.veterinarianId,
+      status: vac.status,
+      href: `/vaccines?patient=${patient.id}`,
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   const meds = vaccinationsService.getMedicationsByPatientId(patient.id);
-  const nextApt = appointmentsService
-    .getAppointmentsByPatientId(patient.id)
-    .find((a) =>
-      ["programada", "confirmada", "llego", "en_consulta"].includes(a.status),
-    );
-  const sales = salesService
-    .getSales()
-    .filter((s) => s.patientId === patient.id);
+  const appointments = appointmentsService.getAppointmentsByPatientId(patient.id);
+  const nextApt = appointments.find((item) =>
+    ["programada", "confirmada", "llego", "en_consulta"].includes(item.status),
+  );
+  const nextVac = vaccines
+    .filter((item) => item.status === "proxima" || item.status === "vencida")
+    .sort((left, right) => {
+      if (left.status !== right.status) return left.status === "vencida" ? -1 : 1;
+      return left.nextDue.localeCompare(right.nextDue);
+    })[0];
+  const sales = salesService.getSales().filter((item) => item.patientId === patient.id);
   const lastRecord = history[0];
+  const activeMeds = meds.filter((item) => item.active);
+  const deceased = patient.vitalStatus === "fallecido";
+  const inactive = patient.status === "inactivo";
+  const hasAlerts = patientHasAlerts(patient) || patient.allergies.length > 0;
+  const sex = patient.sex === "hembra" ? "Hembra" : "Macho";
+  const reproductive =
+    reproductiveOptions.find((item) => item.value === patient.reproductiveStatus)?.label ?? "";
+  const meta = [
+    speciesLabel(patient.species),
+    patient.breed || "Sin raza",
+    sex,
+    formatPatientAge(patient),
+    patient.weight > 0 ? `${patient.weight} kg` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div>
-      <Link href="/patients" className="text-sm text-primary hover:underline">
-        ← Volver a pacientes
+      <Link
+        href="/patients"
+        className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Pacientes
       </Link>
 
-      <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{patient.name}</h1>
-          <p className="mt-1 text-sm text-muted">
-            {patient.breed} · {calculateAge(patient.birthDate)} ·{" "}
-            {patient.sex === "hembra" ? "Hembra" : "Macho"} · {patient.weight} kg
-          </p>
-          <p className="mt-2 text-sm">
-            Propietario:{" "}
-            {owner ? (
-              <Link
-                href={`/clients/${owner.id}`}
-                className="font-medium text-primary hover:underline"
-              >
-                {owner.name}
-              </Link>
-            ) : (
-              "—"
-            )}
-          </p>
+      <div className="mt-4 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+        <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 gap-4">
+            <PetPortrait name={patient.name} photoUrl={patient.photoUrl} />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight">{patient.name}</h1>
+                {patient.code ? (
+                  <span className="rounded-md bg-background px-2 py-0.5 text-xs font-medium text-muted">
+                    {patient.code}
+                  </span>
+                ) : null}
+                {deceased ? <Badge variant="danger">Fallecido</Badge> : null}
+                {inactive ? <Badge variant="muted">Inactivo</Badge> : null}
+                {hasAlerts && !deceased ? <Badge variant="warning">Alerta clínica</Badge> : null}
+              </div>
+              <p className="mt-1 text-sm text-muted">{meta}</p>
+              {patient.altName ? (
+                <p className="mt-1 text-sm text-muted">También: {patient.altName}</p>
+              ) : null}
+              {deceased && patient.deceasedOn ? (
+                <p className="mt-1 text-sm font-medium text-danger">
+                  Fallecido el {formatDate(patient.deceasedOn)}
+                </p>
+              ) : null}
+              <p className="mt-2 text-sm">
+                Tutor:{" "}
+                {owner ? (
+                  <Link
+                    href={`/clients/${owner.id}`}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {owner.name}
+                  </Link>
+                ) : (
+                  <span className="text-muted">Sin tutor</span>
+                )}
+                {owner?.phone ? (
+                  <span className="text-muted"> · {formatPhone(owner.phone)}</span>
+                ) : null}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/consultas?patient=${patient.id}`}>
+              <Button size="sm">Nueva consulta</Button>
+            </Link>
+            <Link href={`/appointments?client=${patient.clientId}&patient=${patient.id}`}>
+              <Button size="sm" variant="outline">
+                Nueva cita
+              </Button>
+            </Link>
+            <Link href={`/vaccines?patient=${patient.id}`}>
+              <Button size="sm" variant="outline">
+                Vacuna
+              </Button>
+            </Link>
+            <Link href={`/pos?client=${patient.clientId}&patient=${patient.id}`}>
+              <Button size="sm" variant="secondary">
+                Venta
+              </Button>
+            </Link>
+            <WhatsAppAction label="WhatsApp" />
+            <PatientFileActions patient={patient} />
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/medical-records?patient=${patient.id}`}>
-            <Button size="sm">Nueva consulta</Button>
-          </Link>
-          <Link
-            href={`/appointments?client=${patient.clientId}&patient=${patient.id}`}
-          >
-            <Button size="sm" variant="outline">
-              Nueva cita
-            </Button>
-          </Link>
-          <Link href={`/vaccines?patient=${patient.id}`}>
-            <Button size="sm" variant="outline">
-              Registrar vacuna
-            </Button>
-          </Link>
-          <Link
-            href={`/pos?client=${patient.clientId}&patient=${patient.id}`}
-          >
-            <Button size="sm" variant="secondary">
-              Registrar venta
-            </Button>
-          </Link>
-          <WhatsAppAction label="Indicaciones WA" />
+
+        <div className="grid grid-cols-2 border-t border-border sm:grid-cols-4">
+          {[
+            {
+              label: "Peso",
+              value: patient.weight > 0 ? `${patient.weight} kg` : "—",
+              icon: <Scale className="h-3.5 w-3.5" />,
+            },
+            {
+              label: "Última consulta",
+              value: lastRecord ? formatDate(lastRecord.date) : "—",
+              icon: <FileText className="h-3.5 w-3.5" />,
+            },
+            {
+              label: "Próxima cita",
+              value: nextApt ? `${formatDate(nextApt.date)} ${nextApt.time}` : "—",
+              icon: <Calendar className="h-3.5 w-3.5" />,
+            },
+            {
+              label: "Vacuna",
+              value: nextVac
+                ? `${nextVac.status === "vencida" ? "Vencida" : "Próxima"} · ${formatDate(nextVac.nextDue)}`
+                : "Al día",
+              tone: (nextVac?.status === "vencida"
+                ? "danger"
+                : nextVac
+                  ? "warning"
+                  : undefined) as "danger" | "warning" | undefined,
+              icon: <Syringe className="h-3.5 w-3.5" />,
+            },
+          ].map((item, index) => (
+            <Stat key={item.label} index={index} {...item} />
+          ))}
         </div>
       </div>
 
-      {/* Critical emergency strip */}
-      <div className="mt-4 rounded-xl border border-danger/30 bg-danger-light/40 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-danger">
-          Información crítica (emergencia)
-        </p>
-        <div className="mt-2 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 rounded-xl border border-border bg-surface p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-muted">Alergias</p>
-            <p className="font-semibold">
-              {patient.allergies.length
-                ? patient.allergies.join(", ")
-                : "Ninguna registrada"}
+            <p className="text-sm font-semibold">Alertas clínicas</p>
+            <p className="mt-0.5 text-xs text-muted">
+              Lo que recepción y el veterinario deben ver antes de atender.
             </p>
           </div>
-          <div>
-            <p className="text-muted">Medicamentos activos</p>
-            <p className="font-semibold">
-              {meds.filter((m) => m.active).map((m) => m.name).join(", ") ||
-                "Ninguno"}
+          {activeMeds.length > 0 ? (
+            <p className="text-xs text-muted">
+              Tratamiento:{" "}
+              <span className="font-medium text-foreground">
+                {activeMeds.map((item) => item.name).join(", ")}
+              </span>
             </p>
-          </div>
-          <div>
-            <p className="text-muted">Último diagnóstico</p>
-            <p className="font-semibold">{lastRecord?.diagnosis ?? "—"}</p>
-          </div>
-          <div>
-            <p className="text-muted">Última consulta</p>
-            <p className="font-semibold">
-              {lastRecord ? formatDate(lastRecord.date) : "—"}
-            </p>
-          </div>
+          ) : null}
         </div>
+        <div className="mt-4">
+          <ClinicalAlerts patient={patient} />
+        </div>
+        {(lastRecord?.diagnosis || lastRecord) && (
+          <div className="mt-4 grid gap-3 border-t border-border pt-4 text-sm sm:grid-cols-2">
+            <div>
+              <p className="text-xs text-muted">Último diagnóstico</p>
+              <p className="mt-0.5 font-medium">{lastRecord?.diagnosis || "Sin diagnóstico"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Última consulta</p>
+              <p className="mt-0.5 font-medium">
+                {lastRecord
+                  ? `${formatDate(lastRecord.date)} · ${lastRecord.reason}`
+                  : "Sin consultas"}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mt-6">
         <Tabs
           tabs={[
             { id: "resumen", label: "Resumen" },
-            { id: "historia", label: "Historia" },
-            { id: "vacunas", label: "Vacunas" },
-            { id: "tratamientos", label: "Tratamientos" },
-            { id: "citas", label: "Citas" },
-            { id: "ventas", label: "Ventas" },
+            { id: "historia", label: `Historia${history.length ? ` (${history.length})` : ""}` },
+            { id: "vacunas", label: `Vacunas${vaccines.length ? ` (${vaccines.length})` : ""}` },
+            {
+              id: "tratamientos",
+              label: `Tratamientos${meds.length ? ` (${meds.length})` : ""}`,
+            },
+            { id: "citas", label: `Citas${appointments.length ? ` (${appointments.length})` : ""}` },
+            { id: "ventas", label: `Ventas${sales.length ? ` (${sales.length})` : ""}` },
             { id: "documentos", label: "Documentos" },
           ]}
           activeId={tab}
@@ -149,160 +266,305 @@ export function PatientHub({ patient }: { patient: Patient }) {
         {tab === "resumen" ? (
           <div className="grid gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
-              <CardHeader title="Información general" />
-              <dl className="grid gap-4 sm:grid-cols-2 text-sm">
-                <Info label="Especie" value={patient.species} />
-                <Info label="Raza" value={patient.breed} />
-                <Info label="Nacimiento" value={formatDate(patient.birthDate)} />
-                <Info label="Peso" value={`${patient.weight} kg`} />
+              <CardHeader title="Identificación" />
+              <dl className="grid gap-4 text-sm sm:grid-cols-2">
+                <Info label="Especie" value={speciesLabel(patient.species)} />
+                <Info label="Raza" value={patient.breed || "Sin indicar"} />
+                <Info label="Sexo" value={sex} />
+                <Info label="Reproducción" value={reproductive || "Sin indicar"} />
+                <Info label="Color y señas" value={patient.coat || "—"} />
+                <Info label="Edad" value={formatPatientAge(patient)} />
                 <Info
                   label="Microchip"
-                  value={patient.microchip ?? "No registrado"}
+                  value={
+                    patient.microchip
+                      ? [
+                          patient.microchip,
+                          patient.microchipImplantedOn
+                            ? formatDate(patient.microchipImplantedOn)
+                            : "",
+                          patient.microchipPlace,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                      : "No registrado"
+                  }
                 />
                 <Info
                   label="Estado"
-                  value={patient.status === "activo" ? "Activo" : "Inactivo"}
+                  value={
+                    deceased
+                      ? "Fallecido"
+                      : inactive
+                        ? "Inactivo"
+                        : "Activo"
+                  }
                 />
               </dl>
             </Card>
-            <Card>
-              <CardHeader title="Próxima cita" />
-              {nextApt ? (
-                <div className="text-sm">
-                  <p className="font-medium">
-                    {formatDate(nextApt.date)} · {nextApt.time}
-                  </p>
-                  <p className="text-muted">{nextApt.reason}</p>
-                </div>
-              ) : (
-                <p className="text-sm text-muted">Sin citas programadas.</p>
-              )}
-            </Card>
+
+            <div className="space-y-6">
+              <Card>
+                <CardHeader title="Evolución del peso" />
+                <WeightHistory patient={patient} />
+              </Card>
+              <Card>
+                <CardHeader title="Próxima cita" />
+                {nextApt ? (
+                  <div className="text-sm">
+                    <p className="font-medium">
+                      {formatDate(nextApt.date)} · {nextApt.time}
+                    </p>
+                    <p className="mt-1 text-muted">{nextApt.reason}</p>
+                    <Link
+                      href="/appointments"
+                      className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
+                    >
+                      Ver en agenda
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="text-sm">
+                    <p className="text-muted">Sin citas programadas.</p>
+                    <Link
+                      href={`/appointments?client=${patient.clientId}&patient=${patient.id}`}
+                      className="mt-3 inline-block font-medium text-primary hover:underline"
+                    >
+                      Agendar cita
+                    </Link>
+                  </div>
+                )}
+              </Card>
+            </div>
           </div>
         ) : null}
 
         {tab === "historia" ? (
           <Card>
-            <CardHeader title="Timeline clínico" />
-            <div className="mb-3 flex flex-wrap gap-2 text-xs">
-              <Badge variant="primary">Consultas</Badge>
-              <Badge>Vacunas</Badge>
-              <Badge>Medicamentos</Badge>
-            </div>
-            <ol className="relative space-y-0 border-l border-border pl-6">
-              {history.map((record) => {
-                const vet = veterinariansService.getVeterinarianById(
-                  record.veterinarianId,
-                );
-                return (
-                  <li key={record.id} className="relative pb-6 last:pb-0">
-                    <span className="absolute -left-[1.6rem] top-1 h-2.5 w-2.5 rounded-full bg-primary" />
-                    <p className="text-xs text-muted">{formatDate(record.date)}</p>
-                    <Link
-                      href={`/medical-records?record=${record.id}`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {record.reason}
+            <CardHeader
+              title="Timeline clínico"
+              description="Consultas y vacunas en una sola línea de tiempo."
+            />
+            {timeline.length === 0 ? (
+              <Empty
+                text="Todavía no hay consultas ni vacunas en esta ficha."
+                action={
+                  <div className="flex flex-wrap gap-2">
+                    <Link href={`/consultas?patient=${patient.id}`}>
+                      <Button size="sm">Nueva consulta</Button>
                     </Link>
-                    <p className="text-sm text-muted">
-                      {record.diagnosis || "Sin diagnóstico aún"} · {vet?.name}
-                    </p>
-                  </li>
-                );
-              })}
-            </ol>
+                    <Link href={`/vaccines?patient=${patient.id}`}>
+                      <Button size="sm" variant="outline">
+                        Registrar vacuna
+                      </Button>
+                    </Link>
+                  </div>
+                }
+              />
+            ) : (
+              <ol className="relative space-y-0 border-l border-border pl-6">
+                {timeline.map((item) => {
+                  const vet = veterinariansService.getVeterinarianById(
+                    item.veterinarianId,
+                  );
+                  return (
+                    <li key={`${item.kind}-${item.id}`} className="relative pb-6 last:pb-0">
+                      <span
+                        className={cn(
+                          "absolute -left-[1.6rem] top-1.5 h-2.5 w-2.5 rounded-full",
+                          item.kind === "vacuna" ? "bg-amber-500" : "bg-primary",
+                        )}
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs text-muted">{formatDate(item.date)}</p>
+                        <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                          {item.kind === "vacuna" ? "Vacuna" : "Consulta"}
+                        </span>
+                      </div>
+                      <Link
+                        href={item.href}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {item.title}
+                      </Link>
+                      <p className="mt-0.5 text-sm text-muted">
+                        {item.subtitle}
+                        {vet?.name ? ` · ${vet.name}` : ""}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
           </Card>
         ) : null}
 
         {tab === "vacunas" ? (
           <Card>
-            <ul className="space-y-3">
-              {vaccines.map((v) => (
-                <li
-                  key={v.id}
-                  className="flex items-center justify-between gap-2 text-sm"
-                >
-                  <div>
-                    <p className="font-medium">{v.name}</p>
-                    <p className="text-xs text-muted">
-                      Lote {v.lot} · {v.laboratory} · Próxima{" "}
-                      {formatDate(v.nextDue)}
-                    </p>
-                  </div>
-                  <StatusBadge
-                    label={
-                      vaccinationStatuses.find((s) => s.value === v.status)
-                        ?.label ?? v.status
-                    }
-                    tone={
-                      (vaccinationStatuses.find((s) => s.value === v.status)
-                        ?.color as "success" | "warning" | "danger" | "muted") ??
-                      "default"
-                    }
-                  />
-                </li>
-              ))}
-            </ul>
+            <CardHeader
+              title="Carné de vacunación"
+              description="Última dosis por vacuna y próxima fecha."
+              action={
+                <Link href={`/vaccines?patient=${patient.id}`}>
+                  <Button size="sm" variant="outline">
+                    Registrar vacuna
+                  </Button>
+                </Link>
+              }
+            />
+            {carnet.length === 0 ? (
+              <Empty text="Sin vacunas registradas." />
+            ) : (
+              <ul className="divide-y divide-border">
+                {carnet.map((item) => {
+                  const status = vaccinationStatuses.find(
+                    (option) => option.value === item.status,
+                  );
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="mt-0.5 text-xs text-muted">
+                          Lote {item.lot}
+                          {item.laboratory ? ` · ${item.laboratory}` : ""}
+                          {" · "}Aplicada {formatDate(item.dateApplied)}
+                          {item.nextDue
+                            ? ` · Próxima ${formatDate(item.nextDue)}`
+                            : ""}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge
+                          label={status?.label ?? item.status}
+                          tone={
+                            (status?.color as
+                              | "success"
+                              | "warning"
+                              | "danger"
+                              | "muted") ?? "default"
+                          }
+                        />
+                        {item.seriesStatus !== "completada" ? (
+                          <Link
+                            href={`/vaccines?patient=${patient.id}`}
+                          >
+                            <Button size="sm" variant="outline">
+                              Refuerzo
+                            </Button>
+                          </Link>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </Card>
         ) : null}
 
         {tab === "tratamientos" ? (
           <Card>
-            <ul className="space-y-3">
-              {meds.map((m) => (
-                <li key={m.id} className="text-sm">
-                  <p className="font-medium">{m.name}</p>
-                  <p className="text-xs text-muted">
-                    {m.dosage} · {m.frequency}
-                  </p>
-                </li>
-              ))}
-            </ul>
+            <CardHeader title="Tratamientos" />
+            {meds.length === 0 ? (
+              <Empty text="Sin tratamientos registrados." />
+            ) : (
+              <ul className="divide-y divide-border">
+                {meds.map((item) => (
+                  <li key={item.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                    <div>
+                      <p className="font-medium">{item.name}</p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {item.dosage} · {item.frequency}
+                      </p>
+                    </div>
+                    <Badge variant={item.active ? "success" : "muted"}>
+                      {item.active ? "Activo" : "Finalizado"}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
         ) : null}
 
         {tab === "citas" ? (
           <Card>
-            <ul className="space-y-3">
-              {appointmentsService.getAppointmentsByPatientId(patient.id).map((a) => {
-                const st = appointmentStatuses.find((s) => s.value === a.status);
-                return (
-                  <li key={a.id} className="flex justify-between text-sm">
-                    <span>
-                      {formatDate(a.date)} {a.time} · {a.reason}
-                    </span>
-                    <StatusBadge
-                      label={st?.label ?? a.status}
-                      tone={
-                        (st?.color as
-                          | "success"
-                          | "warning"
-                          | "primary"
-                          | "danger"
-                          | "muted") ?? "muted"
-                      }
-                    />
-                  </li>
-                );
-              })}
-            </ul>
+            <CardHeader
+              title="Citas"
+              action={
+                <Link href={`/appointments?client=${patient.clientId}&patient=${patient.id}`}>
+                  <Button size="sm" variant="outline">
+                    Nueva cita
+                  </Button>
+                </Link>
+              }
+            />
+            {appointments.length === 0 ? (
+              <Empty text="Sin citas en esta ficha." />
+            ) : (
+              <ul className="divide-y divide-border">
+                {appointments.map((item) => {
+                  const status = appointmentStatuses.find((option) => option.value === item.status);
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          {formatDate(item.date)} · {item.time}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted">{item.reason}</p>
+                      </div>
+                      <StatusBadge
+                        label={status?.label ?? item.status}
+                        tone={
+                          (status?.color as
+                            | "success"
+                            | "warning"
+                            | "primary"
+                            | "danger"
+                            | "muted") ?? "muted"
+                        }
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </Card>
         ) : null}
 
         {tab === "ventas" ? (
           <Card>
+            <CardHeader
+              title="Ventas"
+              action={
+                <Link href={`/pos?client=${patient.clientId}&patient=${patient.id}`}>
+                  <Button size="sm" variant="outline">
+                    Nueva venta
+                  </Button>
+                </Link>
+              }
+            />
             {sales.length === 0 ? (
-              <p className="text-sm text-muted">Sin ventas asociadas.</p>
+              <Empty text="Sin ventas asociadas." />
             ) : (
-              <ul className="space-y-3">
-                {sales.map((s) => (
-                  <li key={s.id} className="flex justify-between text-sm">
+              <ul className="divide-y divide-border">
+                {sales.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 py-3 text-sm first:pt-0 last:pb-0"
+                  >
                     <span>
-                      {formatDate(s.date)} ·{" "}
-                      {paymentMethods.find((p) => p.value === s.paymentMethod)
-                        ?.label ?? s.paymentMethod}
+                      {formatDate(item.date)} ·{" "}
+                      {paymentMethods.find((option) => option.value === item.paymentMethod)
+                        ?.label ?? item.paymentMethod}
                     </span>
-                    <span className="font-medium">{formatCurrency(s.total)}</span>
+                    <span className="font-medium">{formatCurrency(item.total)}</span>
                   </li>
                 ))}
               </ul>
@@ -312,15 +574,19 @@ export function PatientHub({ patient }: { patient: Patient }) {
 
         {tab === "documentos" ? (
           <Card>
-            <div className="flex flex-col gap-2">
+            <CardHeader title="Documentos" />
+            <p className="mb-4 text-sm text-muted">
+              Recetas, resultados y certificados saldrán de la consulta. Por ahora son demos.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <Button variant="outline" leftIcon={<FileText className="h-4 w-4" />}>
-                Receta (demo)
+                Receta
               </Button>
               <Button variant="outline" leftIcon={<FileText className="h-4 w-4" />}>
-                Resultados (demo)
+                Resultados
               </Button>
               <Button variant="outline" leftIcon={<FileText className="h-4 w-4" />}>
-                Certificado (demo)
+                Certificado
               </Button>
             </div>
           </Card>
@@ -330,11 +596,133 @@ export function PatientHub({ patient }: { patient: Patient }) {
   );
 }
 
+function PetPortrait({ name, photoUrl }: { name: string; photoUrl?: string }) {
+  if (photoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={photoUrl}
+        alt=""
+        className="h-14 w-14 shrink-0 rounded-full object-cover ring-1 ring-border"
+      />
+    );
+  }
+  return <Avatar initials={petInitials(name)} size="lg" />;
+}
+
+function Stat({
+  label,
+  value,
+  icon,
+  tone,
+  index,
+}: {
+  label: string;
+  value: string;
+  icon: ReactNode;
+  tone?: "danger" | "warning";
+  index: number;
+}) {
+  return (
+    <div
+      className={cn(
+        "px-5 py-3",
+        index % 2 === 1 && "border-l border-border",
+        index > 0 && "sm:border-l sm:border-border",
+        index >= 2 && "border-t border-border sm:border-t-0",
+      )}
+    >
+      <p className="flex items-center gap-1.5 text-xs text-muted">
+        {icon}
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-0.5 truncate text-base font-semibold",
+          tone === "danger" ? "text-danger" : tone === "warning" ? "text-warning" : "text-foreground",
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function WeightHistory({ patient }: { patient: Patient }) {
+  const points = [...(patient.weights ?? [])].sort((a, b) =>
+    a.measuredAt.localeCompare(b.measuredAt),
+  );
+  if (points.length === 0) {
+    return (
+      <p className="text-sm text-muted">
+        {patient.weight > 0
+          ? `${patient.weight} kg, sin fecha de medición.`
+          : "Todavía no hay un peso medido."}
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {points.length > 1 ? (
+        <div className="h-36">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={points.map((item) => ({
+                name: formatDate(item.measuredAt),
+                kg: item.kg,
+              }))}
+            >
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} width={36} unit=" kg" />
+              <Tooltip />
+              <Line
+                type="monotone"
+                dataKey="kg"
+                stroke="#0d9488"
+                strokeWidth={2}
+                dot={{ r: 3 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : null}
+      <ul className="space-y-2 text-sm">
+        {[...points].reverse().map((item) => (
+          <li key={item.id} className="flex items-baseline justify-between gap-3">
+            <span>
+              {item.kg} kg
+              <span className="mt-0.5 block text-xs text-muted">
+                {formatDate(item.measuredAt)} · {formatTime(item.measuredAt)}
+                {item.recordedByName ? ` · ${item.recordedByName}` : ""}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-muted">{label}</dt>
-      <dd className="mt-1 capitalize">{value}</dd>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="mt-1 font-medium text-foreground">{value}</dd>
     </div>
   );
+}
+
+function Empty({ text, action }: { text: string; action?: ReactNode }) {
+  return (
+    <div className="py-2 text-sm text-muted">
+      <p>{text}</p>
+      {action ? <div className="mt-3">{action}</div> : null}
+    </div>
+  );
+}
+
+function petInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return (parts[0] ?? "").slice(0, 2).toUpperCase();
+  return `${parts[0]?.charAt(0) ?? ""}${parts[parts.length - 1]?.charAt(0) ?? ""}`.toUpperCase();
 }

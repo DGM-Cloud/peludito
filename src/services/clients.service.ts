@@ -1,56 +1,57 @@
-import { clients as seedClients } from "@/data/mock/clients";
+import { api } from "@/lib/api";
+import { readSnapshot } from "@/lib/clinic-cache";
 import type { Client, CreateClientInput } from "@/types/client";
-
-let clientsStore: Client[] = [...seedClients];
+import { clientMatchesQuery } from "@/utils/client-fields";
 
 export const clientsService = {
   getClients(): Client[] {
-    return [...clientsStore];
+    return readSnapshot().clients;
   },
 
   getClientById(id: string): Client | undefined {
-    return clientsStore.find((c) => c.id === id);
+    return this.getClients().find((client) => client.id === id);
   },
 
   search(query: string): Client[] {
-    const q = query.toLowerCase().trim();
-    if (!q) return [];
-    const digits = q.replace(/\D/g, "");
-    return clientsStore.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.email.toLowerCase().includes(q) ||
-        (digits.length >= 3 && c.phone.includes(digits)),
-    );
+    return this.getClients().filter((client) => clientMatchesQuery(client, query));
   },
 
-  findPossibleDuplicates(name: string, phone: string): Client[] {
-    const n = name.toLowerCase().trim();
-    const p = phone.replace(/\D/g, "");
-    if (!n && !p) return [];
-    return clientsStore.filter((c) => {
-      const sameName = n.length >= 3 && c.name.toLowerCase().includes(n);
-      const samePhone =
-        p.length >= 6 && c.phone.replace(/\D/g, "").includes(p);
-      return sameName || samePhone;
+  async findByDocument(documentNumber: string): Promise<Client | null> {
+    const digits = documentNumber.replace(/\D/g, "");
+    return api<Client | null>(`/clients/lookup?document=${digits}`);
+  },
+
+  searchByNameOrDocument(query: string): Client[] {
+    return this.getClients().filter((client) => clientMatchesQuery(client, query));
+  },
+
+  async findPossibleDuplicates(input: {
+    phone?: string;
+    phoneAlt?: string;
+    document?: string;
+    ruc?: string;
+  }): Promise<Client[]> {
+    const params = new URLSearchParams();
+    if (input.phone) params.set("phone", input.phone);
+    if (input.phoneAlt) params.set("phoneAlt", input.phoneAlt);
+    if (input.document) params.set("document", input.document);
+    if (input.ruc) params.set("ruc", input.ruc);
+    if ([...params.keys()].length === 0) return [];
+    return api<Client[]>(`/clients/duplicates?${params.toString()}`);
+  },
+
+  async createClient(data: CreateClientInput): Promise<Client & { warnings?: string[] }> {
+    return api<Client & { warnings?: string[] }>("/clients", {
+      method: "POST",
+      body: JSON.stringify(data),
     });
   },
 
-  createClient(data: CreateClientInput): Client {
-    const client: Client = {
-      ...data,
-      id: `cli-${Date.now()}`,
-      lastVisit: null,
-      patientIds: data.patientIds ?? [],
-    };
-    clientsStore = [client, ...clientsStore];
-    return client;
-  },
-
-  updateClient(id: string, data: Partial<Client>): Client | undefined {
-    const index = clientsStore.findIndex((c) => c.id === id);
-    if (index === -1) return undefined;
-    clientsStore[index] = { ...clientsStore[index], ...data, id };
-    return clientsStore[index];
+  async updateClient(id: string, data: Partial<Client>): Promise<Client> {
+    return api<Client>(`/clients/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
   },
 };
+

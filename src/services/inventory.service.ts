@@ -1,106 +1,54 @@
-import {
-  inventoryBatches as seedBatches,
-  inventoryMovements as seedMovements,
-  products as seedProducts,
-} from "@/data/mock/inventory";
-import type {
-  CreateProductInput,
-  InventoryBatch,
-  InventoryMovement,
-  Product,
-} from "@/types/product";
-import { DEMO_TODAY } from "@/config/demo";
-
-let productsStore: Product[] = [...seedProducts];
-const batchesStore: InventoryBatch[] = [...seedBatches];
-let movementsStore: InventoryMovement[] = [...seedMovements];
-
-function resolveStatus(stock: number, minStock: number): Product["status"] {
-  if (stock <= 0) return "sin_stock";
-  if (stock <= Math.ceil(minStock * 0.5)) return "critico";
-  if (stock <= minStock) return "bajo";
-  return "normal";
-}
+import { api } from "@/lib/api";
+import { readSnapshot } from "@/lib/clinic-cache";
+import { todayISODate } from "@/utils/formatDate";
+import type { CreateProductInput, Product } from "@/types/product";
 
 export const inventoryService = {
   getProducts(): Product[] {
-    return productsStore.map((p) => ({
-      ...p,
-      status: resolveStatus(p.stock, p.minStock),
-    }));
+    return readSnapshot().products;
   },
 
   getProductById(id: string): Product | undefined {
-    return this.getProducts().find((p) => p.id === id);
+    return this.getProducts().find((product) => product.id === id);
   },
 
-  getBatches(): InventoryBatch[] {
-    return [...batchesStore];
+  getBatches() {
+    return readSnapshot().batches;
   },
 
-  getBatchesByProductId(productId: string): InventoryBatch[] {
-    return batchesStore.filter((b) => b.productId === productId);
+  getBatchesByProductId(productId: string) {
+    return this.getBatches().filter((batch) => batch.productId === productId);
   },
 
-  getExpiringBatches(withinDays = 30): InventoryBatch[] {
-    const today = new Date(DEMO_TODAY);
-    return batchesStore.filter((b) => {
-      const exp = new Date(b.expiryDate);
-      const diff = (exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+  getExpiringBatches(withinDays = 30) {
+    const today = new Date(`${todayISODate()}T12:00:00`);
+    return this.getBatches().filter((batch) => {
+      const diff =
+        (new Date(`${batch.expiryDate}T12:00:00`).getTime() - today.getTime()) /
+        86400000;
       return diff >= 0 && diff <= withinDays;
     });
   },
 
   getLowStock(): Product[] {
-    return this.getProducts().filter(
-      (p) => p.status === "bajo" || p.status === "critico" || p.status === "sin_stock",
-    );
+    return this.getProducts().filter((product) => product.status !== "normal");
   },
 
-  getMovements(): InventoryMovement[] {
-    return [...movementsStore];
+  getMovements() {
+    return readSnapshot().movements;
   },
 
-  createProduct(data: CreateProductInput): Product {
-    const product: Product = {
-      ...data,
-      id: `prd-${Date.now()}`,
-      status: resolveStatus(data.stock, data.minStock),
-    };
-    productsStore = [product, ...productsStore];
-    return product;
+  async createProduct(data: CreateProductInput): Promise<Product> {
+    return api<Product>("/products", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
-  updateProduct(id: string, data: Partial<Product>): Product | undefined {
-    const index = productsStore.findIndex((p) => p.id === id);
-    if (index === -1) return undefined;
-    const merged = { ...productsStore[index], ...data, id };
-    merged.status = resolveStatus(merged.stock, merged.minStock);
-    productsStore[index] = merged;
-    return merged;
-  },
-
-  deductStock(
-    productId: string,
-    quantity: number,
-    reason: string,
-    saleId?: string,
-  ): Product | undefined {
-    const product = productsStore.find((p) => p.id === productId);
-    if (!product) return undefined;
-    const nextStock = Math.max(0, product.stock - quantity);
-    movementsStore = [
-      {
-        id: `mov-${Date.now()}`,
-        productId,
-        type: "salida",
-        quantity,
-        reason,
-        date: DEMO_TODAY,
-        saleId,
-      },
-      ...movementsStore,
-    ];
-    return this.updateProduct(productId, { stock: nextStock });
+  async updateProduct(id: string, data: Partial<Product>): Promise<Product> {
+    return api<Product>(`/products/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
   },
 };

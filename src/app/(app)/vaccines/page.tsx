@@ -10,7 +10,7 @@ export default function VaccinesPage() {
     <PageContainer>
       <PageHeader
         title="Vacunas"
-        description="Próximas, vencidas y registro de dosis."
+        description="Carné clínico: próximas, vencidas, refuerzos y vínculo con el historial del paciente."
       />
       <Suspense fallback={<p className="text-sm text-muted">Cargando…</p>}>
         <VaccinesView />

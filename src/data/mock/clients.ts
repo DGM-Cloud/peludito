@@ -4,6 +4,8 @@ export const clients: Client[] = [
   {
     id: "cli-1",
     name: "María Torres",
+    documentType: "DNI",
+    documentNumber: "45678912",
     phone: "987654321",
     email: "maria.torres@email.com",
     address: "Av. Larco 450, Miraflores",
@@ -13,6 +15,8 @@ export const clients: Client[] = [
   {
     id: "cli-2",
     name: "Carlos Mendoza",
+    documentType: "DNI",
+    documentNumber: "71234567",
     phone: "912345678",
     email: "carlos.mendoza@email.com",
     address: "Jr. Cusco 120, San Isidro",
@@ -22,6 +26,8 @@ export const clients: Client[] = [
   {
     id: "cli-3",
     name: "Andrea Vargas",
+    documentType: "CE",
+    documentNumber: "001234567",
     phone: "998877665",
     email: "andrea.vargas@email.com",
     address: "Calle Los Olivos 88, Surco",
@@ -31,6 +37,8 @@ export const clients: Client[] = [
   {
     id: "cli-4",
     name: "Diego Ramírez",
+    documentType: "DNI",
+    documentNumber: "40125896",
     phone: "976543210",
     email: "diego.ramirez@email.com",
     address: "Av. Brasil 2100, Magdalena",
@@ -40,6 +48,8 @@ export const clients: Client[] = [
   {
     id: "cli-5",
     name: "Valeria Castro",
+    documentType: "CE",
+    documentNumber: "009876543",
     phone: "965432109",
     email: "valeria.castro@email.com",
     address: "Av. Primavera 560, Surco",
@@ -49,6 +59,8 @@ export const clients: Client[] = [
   {
     id: "cli-6",
     name: "José Flores",
+    documentType: "DNI",
+    documentNumber: "33445566",
     phone: "954321098",
     email: "jose.flores@email.com",
     address: "Jr. Huancavelica 45, Cercado",
